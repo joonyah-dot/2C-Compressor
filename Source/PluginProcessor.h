@@ -1,11 +1,16 @@
 #pragma once
-#include <JuceHeader.h>
 
-class __PLUGIN_NAME__AudioProcessor : public juce::AudioProcessor
+#include <JuceHeader.h>
+#include <atomic>
+
+#include "DSP/CompressorDSP.h"
+#include "Parameters.h"
+
+class TwoCCompressorAudioProcessor : public juce::AudioProcessor
 {
 public:
-    __PLUGIN_NAME__AudioProcessor();
-    ~__PLUGIN_NAME__AudioProcessor() override = default;
+    TwoCCompressorAudioProcessor();
+    ~TwoCCompressorAudioProcessor() override = default;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -27,9 +32,32 @@ public:
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
 
-    void getStateInformation (juce::MemoryBlock&) override {}
-    void setStateInformation (const void*, int) override {}
+    void getStateInformation (juce::MemoryBlock&) override;
+    void setStateInformation (const void*, int) override;
+
+    juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
+    const juce::AudioProcessorValueTreeState& getAPVTS() const noexcept { return apvts; }
+
+    std::atomic<float> inputMeterDb { 0.0f };
+    std::atomic<float> outputMeterDb { 0.0f };
+    std::atomic<float> gainReductionDb { 0.0f };
 
 private:
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (__PLUGIN_NAME__AudioProcessor)
+    void cacheParameterPointers();
+
+    juce::AudioProcessorValueTreeState apvts;
+    CompressorDSP compressor;
+    juce::AudioBuffer<float> dryBuffer;
+
+    std::atomic<float>* inputDbParam = nullptr;
+    std::atomic<float>* thresholdDbParam = nullptr;
+    std::atomic<float>* ratioParam = nullptr;
+    std::atomic<float>* attackMsParam = nullptr;
+    std::atomic<float>* releaseMsParam = nullptr;
+    std::atomic<float>* kneeDbParam = nullptr;
+    std::atomic<float>* makeupDbParam = nullptr;
+    std::atomic<float>* mixParam = nullptr;
+    std::atomic<float>* outputDbParam = nullptr;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TwoCCompressorAudioProcessor)
 };

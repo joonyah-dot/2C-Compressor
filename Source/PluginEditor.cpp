@@ -1,17 +1,129 @@
 #include "PluginEditor.h"
+#include "Parameters.h"
 
-__PLUGIN_NAME__AudioProcessorEditor::__PLUGIN_NAME__AudioProcessorEditor (__PLUGIN_NAME__AudioProcessor& p)
+TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCCompressorAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    setSize (420, 260);
+    setSize (900, 500);
+
+    setupControl (controls[0], "Input", Parameters::IDs::inputDb);
+    setupControl (controls[1], "Threshold", Parameters::IDs::thresholdDb);
+    setupControl (controls[2], "Ratio", Parameters::IDs::ratio);
+    setupControl (controls[3], "Attack", Parameters::IDs::attackMs);
+    setupControl (controls[4], "Release", Parameters::IDs::releaseMs);
+    setupControl (controls[5], "Knee", Parameters::IDs::kneeDb);
+    setupControl (controls[6], "Makeup", Parameters::IDs::makeupDb);
+    setupControl (controls[7], "Mix", Parameters::IDs::mix);
+    setupControl (controls[8], "Output", Parameters::IDs::outputDb);
+
+    meterTitle.setText ("Meters", juce::dontSendNotification);
+    meterTitle.setJustificationType (juce::Justification::centredLeft);
+    meterTitle.setFont (juce::FontOptions { 16.0f, juce::Font::bold });
+    addAndMakeVisible (meterTitle);
+
+    for (auto* meter : { &inputMeterLabel, &grMeterLabel, &outputMeterLabel })
+    {
+        meter->setJustificationType (juce::Justification::centredLeft);
+        meter->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
+        meter->setFont (juce::FontOptions { 15.0f });
+        addAndMakeVisible (*meter);
+    }
+
+    timerCallback();
+    startTimerHz (60);
 }
 
-void __PLUGIN_NAME__AudioProcessorEditor::paint (juce::Graphics& g)
+void TwoCCompressorAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colours::black);
-    g.setColour (juce::Colours::white);
-    g.setFont (20.0f);
-    g.drawFittedText ("__PLUGIN_NAME__", getLocalBounds(), juce::Justification::centred, 1);
+    juce::ColourGradient bg (
+        juce::Colour::fromRGB (18, 23, 31), 0.0f, 0.0f,
+        juce::Colour::fromRGB (7, 9, 14), 0.0f, static_cast<float> (getHeight()),
+        false);
+
+    g.setGradientFill (bg);
+    g.fillAll();
+
+    auto bounds = getLocalBounds().reduced (16);
+    auto controlsArea = bounds.removeFromLeft (bounds.proportionOfWidth (0.75f));
+
+    g.setColour (juce::Colours::white.withAlpha (0.08f));
+    g.fillRoundedRectangle (controlsArea.toFloat(), 12.0f);
+    g.fillRoundedRectangle (bounds.toFloat(), 12.0f);
+
+    g.setColour (juce::Colours::white.withAlpha (0.12f));
+    g.drawRoundedRectangle (controlsArea.toFloat(), 12.0f, 1.0f);
+    g.drawRoundedRectangle (bounds.toFloat(), 12.0f, 1.0f);
 }
 
-void __PLUGIN_NAME__AudioProcessorEditor::resized() {}
+void TwoCCompressorAudioProcessorEditor::resized()
+{
+    auto bounds = getLocalBounds().reduced (16);
+    auto controlsArea = bounds.removeFromLeft (bounds.proportionOfWidth (0.75f)).reduced (14);
+    auto meterArea = bounds.reduced (14);
+
+    juce::Grid grid;
+    grid.templateRows = { juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr) };
+    grid.templateColumns = { juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr) };
+    grid.rowGap = juce::Grid::Px { 12.0f };
+    grid.columnGap = juce::Grid::Px { 12.0f };
+
+    juce::Array<juce::GridItem> items;
+    for (auto& control : controls)
+        items.add (juce::GridItem (control.slider));
+
+    grid.items = items;
+    grid.performLayout (controlsArea);
+
+    for (auto& control : controls)
+    {
+        auto area = control.slider.getBounds();
+        control.label.setBounds (area.removeFromTop (22));
+        control.slider.setBounds (area);
+    }
+
+    meterTitle.setBounds (meterArea.removeFromTop (28));
+    meterArea.removeFromTop (8);
+    inputMeterLabel.setBounds (meterArea.removeFromTop (32));
+    grMeterLabel.setBounds (meterArea.removeFromTop (32));
+    outputMeterLabel.setBounds (meterArea.removeFromTop (32));
+}
+
+void TwoCCompressorAudioProcessorEditor::timerCallback()
+{
+    const auto in = processor.inputMeterDb.load (std::memory_order_relaxed);
+    const auto gr = processor.gainReductionDb.load (std::memory_order_relaxed);
+    const auto out = processor.outputMeterDb.load (std::memory_order_relaxed);
+
+    inputMeterLabel.setText ("Input dB:  " + formatMeterDb (in), juce::dontSendNotification);
+    grMeterLabel.setText ("GR dB:      " + formatMeterDb (gr), juce::dontSendNotification);
+    outputMeterLabel.setText ("Output dB: " + formatMeterDb (out), juce::dontSendNotification);
+}
+
+void TwoCCompressorAudioProcessorEditor::setupControl (ParameterControl& control, const juce::String& name, const juce::String& parameterID)
+{
+    control.label.setText (name, juce::dontSendNotification);
+    control.label.setJustificationType (juce::Justification::centred);
+    control.label.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
+    control.label.setFont (juce::FontOptions { 14.0f, juce::Font::bold });
+    addAndMakeVisible (control.label);
+
+    control.slider.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+    control.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 76, 20);
+    control.slider.setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colours::white.withAlpha (0.2f));
+    control.slider.setColour (juce::Slider::rotarySliderFillColourId, juce::Colour::fromRGB (75, 174, 224));
+    control.slider.setColour (juce::Slider::thumbColourId, juce::Colours::white.withAlpha (0.95f));
+    control.slider.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha (0.9f));
+    control.slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    control.slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::white.withAlpha (0.08f));
+    addAndMakeVisible (control.slider);
+
+    control.attachment = std::make_unique<SliderAttachment> (processor.getAPVTS(), parameterID, control.slider);
+}
+
+juce::String TwoCCompressorAudioProcessorEditor::formatMeterDb (float db)
+{
+    if (db <= -100.0f)
+        return "-inf";
+
+    return juce::String (db, 1);
+}

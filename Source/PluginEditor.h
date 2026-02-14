@@ -1,17 +1,41 @@
 #pragma once
+
 #include <JuceHeader.h>
+
 #include "PluginProcessor.h"
 
-class __PLUGIN_NAME__AudioProcessorEditor : public juce::AudioProcessorEditor
+class TwoCCompressorAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                           private juce::Timer
 {
 public:
-    explicit __PLUGIN_NAME__AudioProcessorEditor (__PLUGIN_NAME__AudioProcessor&);
-    ~__PLUGIN_NAME__AudioProcessorEditor() override = default;
+    explicit TwoCCompressorAudioProcessorEditor (TwoCCompressorAudioProcessor&);
+    ~TwoCCompressorAudioProcessorEditor() override = default;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    __PLUGIN_NAME__AudioProcessor& processor;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (__PLUGIN_NAME__AudioProcessorEditor)
+    using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
+
+    struct ParameterControl
+    {
+        juce::Slider slider;
+        juce::Label label;
+        std::unique_ptr<SliderAttachment> attachment;
+    };
+
+    void timerCallback() override;
+    void setupControl (ParameterControl& control, const juce::String& name, const juce::String& parameterID);
+    static juce::String formatMeterDb (float db);
+
+    TwoCCompressorAudioProcessor& processor;
+
+    std::array<ParameterControl, 9> controls;
+
+    juce::Label meterTitle;
+    juce::Label inputMeterLabel;
+    juce::Label grMeterLabel;
+    juce::Label outputMeterLabel;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TwoCCompressorAudioProcessorEditor)
 };
