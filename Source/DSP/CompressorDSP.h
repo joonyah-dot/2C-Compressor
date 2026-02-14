@@ -73,7 +73,14 @@ public:
             const auto detectorDb = juce::Decibels::gainToDecibels (linkedRms, -120.0f);
             const auto targetGainReductionDb = computeGainReductionDb (detectorDb);
 
-            const auto grCoeff = (targetGainReductionDb > gainReductionEnvelopeDb) ? attackCoeff : releaseCoeff;
+            float grCoeff = attackCoeff;
+
+            if (targetGainReductionDb <= gainReductionEnvelopeDb)
+            {
+                const auto releaseBlend = smoothstep ((gainReductionEnvelopeDb - smallGrDb) / (largeGrDb - smallGrDb));
+                grCoeff = juce::jmap (releaseBlend, releaseSlowCoeff, releaseFastCoeff);
+            }
+
             gainReductionEnvelopeDb = grCoeff * gainReductionEnvelopeDb + (1.0f - grCoeff) * targetGainReductionDb;
 
             const auto targetGainLinear = juce::Decibels::decibelsToGain (-gainReductionEnvelopeDb);
@@ -98,6 +105,12 @@ private:
     {
         const auto seconds = juce::jmax (0.00001, static_cast<double> (timeMs) * 0.001);
         return std::exp (-1.0f / static_cast<float> (seconds * sr));
+    }
+
+    static float smoothstep (float x) noexcept
+    {
+        const auto t = juce::jlimit (0.0f, 1.0f, x);
+        return t * t * (3.0f - 2.0f * t);
     }
 
     float computeGainReductionDb (float inputDb) const
@@ -140,7 +153,13 @@ private:
     void updateTimeConstants()
     {
         attackCoeff = coefficientFromMs (parameters.attackMs, sampleRate);
-        releaseCoeff = coefficientFromMs (parameters.releaseMs, sampleRate);
+
+        constexpr auto releaseScale = 4.0f;
+        const auto releaseFastMs = juce::jlimit (5.0f, 2000.0f, parameters.releaseMs / releaseScale);
+        const auto releaseSlowMs = juce::jlimit (5.0f, 2000.0f, parameters.releaseMs * releaseScale);
+
+        releaseFastCoeff = coefficientFromMs (releaseFastMs, sampleRate);
+        releaseSlowCoeff = coefficientFromMs (releaseSlowMs, sampleRate);
 
         constexpr auto rmsWindowMs = 10.0f;
         rmsCoeff = coefficientFromMs (rmsWindowMs, sampleRate);
@@ -154,7 +173,8 @@ private:
     double sampleRate = 44100.0;
 
     float attackCoeff = 0.0f;
-    float releaseCoeff = 0.0f;
+    float releaseFastCoeff = 0.0f;
+    float releaseSlowCoeff = 0.0f;
     float rmsCoeff = 0.0f;
     float gainSmoothCoeff = 0.0f;
 
@@ -163,4 +183,7 @@ private:
     float gainReductionEnvelopeDb = 0.0f;
     float smoothedGainLinear = 1.0f;
     float lastGainReductionDb = 0.0f;
+
+    static constexpr float smallGrDb = 3.0f;
+    static constexpr float largeGrDb = 10.0f;
 };
