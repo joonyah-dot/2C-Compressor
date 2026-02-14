@@ -32,6 +32,7 @@ target_sources(TwoCCompressor PRIVATE
     Source/Parameters.cpp
     Source/Parameters.h
     Source/DSP/CompressorDSP.h
+    Source/DSP/Saturation.h
     Source/DSP/EnvelopeFollower.h
     Source/DSP/LevelDetector.h
 )

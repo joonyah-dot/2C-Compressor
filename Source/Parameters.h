@@ -14,6 +14,9 @@ inline constexpr const char* releaseMs = "releaseMs";
 inline constexpr const char* scHpfHz = "scHpfHz";
 inline constexpr const char* kneeDb = "kneeDb";
 inline constexpr const char* makeupDb = "makeupDb";
+inline constexpr const char* satDrive = "satDrive";
+inline constexpr const char* satMix = "satMix";
+inline constexpr const char* osMode = "osMode";
 inline constexpr const char* mix = "mix";
 inline constexpr const char* outputDb = "outputDb";
 }

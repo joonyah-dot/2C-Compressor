@@ -2,8 +2,10 @@
 
 #include <JuceHeader.h>
 #include <atomic>
+#include <memory>
 
 #include "DSP/CompressorDSP.h"
+#include "DSP/Saturation.h"
 #include "Parameters.h"
 
 class TwoCCompressorAudioProcessor : public juce::AudioProcessor
@@ -47,7 +49,13 @@ private:
 
     juce::AudioProcessorValueTreeState apvts;
     CompressorDSP compressor;
+    Saturation saturation;
+
     juce::AudioBuffer<float> dryBuffer;
+    juce::AudioBuffer<float> saturationDryBuffer;
+
+    std::unique_ptr<juce::dsp::Oversampling<float>> oversampling2x;
+    std::unique_ptr<juce::dsp::Oversampling<float>> oversampling4x;
 
     std::atomic<float>* inputDbParam = nullptr;
     std::atomic<float>* thresholdDbParam = nullptr;
@@ -57,6 +65,9 @@ private:
     std::atomic<float>* scHpfHzParam = nullptr;
     std::atomic<float>* kneeDbParam = nullptr;
     std::atomic<float>* makeupDbParam = nullptr;
+    std::atomic<float>* satDriveParam = nullptr;
+    std::atomic<float>* satMixParam = nullptr;
+    std::atomic<float>* osModeParam = nullptr;
     std::atomic<float>* mixParam = nullptr;
     std::atomic<float>* outputDbParam = nullptr;
 

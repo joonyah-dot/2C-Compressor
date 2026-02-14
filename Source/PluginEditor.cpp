@@ -4,7 +4,7 @@
 TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCCompressorAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    setSize (900, 500);
+    setSize (980, 560);
 
     setupControl (controls[0], "Input", Parameters::IDs::inputDb);
     setupControl (controls[1], "Threshold", Parameters::IDs::thresholdDb);
@@ -14,8 +14,27 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     setupControl (controls[5], "SC HPF", Parameters::IDs::scHpfHz);
     setupControl (controls[6], "Knee", Parameters::IDs::kneeDb);
     setupControl (controls[7], "Makeup", Parameters::IDs::makeupDb);
-    setupControl (controls[8], "Mix", Parameters::IDs::mix);
-    setupControl (controls[9], "Output", Parameters::IDs::outputDb);
+    setupControl (controls[8], "Drive", Parameters::IDs::satDrive);
+    setupControl (controls[9], "Sat Mix", Parameters::IDs::satMix);
+    setupControl (controls[10], "Mix", Parameters::IDs::mix);
+    setupControl (controls[11], "Output", Parameters::IDs::outputDb);
+
+    osModeLabel.setText ("Oversampling", juce::dontSendNotification);
+    osModeLabel.setJustificationType (juce::Justification::centredLeft);
+    osModeLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
+    osModeLabel.setFont (juce::FontOptions { 14.0f, juce::Font::bold });
+    addAndMakeVisible (osModeLabel);
+
+    osModeBox.addItem ("Off", 1);
+    osModeBox.addItem ("2x", 2);
+    osModeBox.addItem ("4x", 3);
+    osModeBox.setJustificationType (juce::Justification::centred);
+    osModeBox.setColour (juce::ComboBox::backgroundColourId, juce::Colours::white.withAlpha (0.08f));
+    osModeBox.setColour (juce::ComboBox::textColourId, juce::Colours::white.withAlpha (0.9f));
+    osModeBox.setColour (juce::ComboBox::outlineColourId, juce::Colours::white.withAlpha (0.2f));
+    addAndMakeVisible (osModeBox);
+
+    osModeAttachment = std::make_unique<ComboAttachment> (processor.getAPVTS(), Parameters::IDs::osMode, osModeBox);
 
     meterTitle.setText ("Meters", juce::dontSendNotification);
     meterTitle.setJustificationType (juce::Justification::centredLeft);
@@ -45,7 +64,7 @@ void TwoCCompressorAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillAll();
 
     auto bounds = getLocalBounds().reduced (16);
-    auto controlsArea = bounds.removeFromLeft (bounds.proportionOfWidth (0.75f));
+    auto controlsArea = bounds.removeFromLeft (bounds.proportionOfWidth (0.78f));
 
     g.setColour (juce::Colours::white.withAlpha (0.08f));
     g.fillRoundedRectangle (controlsArea.toFloat(), 12.0f);
@@ -59,14 +78,23 @@ void TwoCCompressorAudioProcessorEditor::paint (juce::Graphics& g)
 void TwoCCompressorAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds().reduced (16);
-    auto controlsArea = bounds.removeFromLeft (bounds.proportionOfWidth (0.75f)).reduced (14);
+    auto controlsArea = bounds.removeFromLeft (bounds.proportionOfWidth (0.78f)).reduced (14);
     auto meterArea = bounds.reduced (14);
 
+    auto osRow = controlsArea.removeFromBottom (34);
+    controlsArea.removeFromBottom (10);
+
     juce::Grid grid;
-    grid.templateRows = { juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr) };
+    grid.templateRows = {
+        juce::Grid::TrackInfo (1_fr),
+        juce::Grid::TrackInfo (1_fr),
+        juce::Grid::TrackInfo (1_fr)
+    };
     grid.templateColumns = {
-        juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr),
-        juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr)
+        juce::Grid::TrackInfo (1_fr),
+        juce::Grid::TrackInfo (1_fr),
+        juce::Grid::TrackInfo (1_fr),
+        juce::Grid::TrackInfo (1_fr)
     };
     grid.rowGap = juce::Grid::Px { 12.0f };
     grid.columnGap = juce::Grid::Px { 12.0f };
@@ -84,6 +112,10 @@ void TwoCCompressorAudioProcessorEditor::resized()
         control.label.setBounds (area.removeFromTop (22));
         control.slider.setBounds (area);
     }
+
+    osModeLabel.setBounds (osRow.removeFromLeft (120));
+    osRow.removeFromLeft (8);
+    osModeBox.setBounds (osRow.removeFromLeft (120));
 
     meterTitle.setBounds (meterArea.removeFromTop (28));
     meterArea.removeFromTop (8);

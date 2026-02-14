@@ -96,12 +96,19 @@ juce::NormalisableRange<float> makeScHpfRange()
         }
     };
 }
+
+juce::NormalisableRange<float> makeSatDriveRange()
+{
+    juce::NormalisableRange<float> range { 0.0f, 1.0f };
+    range.setSkewForCentre (0.2f);
+    return range;
+}
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameters;
-    parameters.reserve (10);
+    parameters.reserve (13);
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::inputDb, 1 }, "Input", juce::NormalisableRange<float> { -24.0f, 24.0f }, 0.0f,
@@ -129,7 +136,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
             [] (float value, int) { return juce::String (value, 1) + " ms"; })));
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { IDs::scHpfHz, 1 }, "SC HPF", makeScHpfRange(), 0.0f,
+        juce::ParameterID { IDs::scHpfHz, 1 }, "SC HPF", makeScHpfRange(), 100.0f,
         juce::AudioParameterFloatAttributes()
             .withStringFromValueFunction ([] (float value, int)
             {
@@ -163,6 +170,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
         juce::ParameterID { IDs::makeupDb, 1 }, "Makeup", juce::NormalisableRange<float> { -12.0f, 24.0f }, 0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (
             [] (float value, int) { return juce::String (value, 1) + " dB"; })));
+
+    parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { IDs::satDrive, 1 }, "Drive", makeSatDriveRange(), 0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (
+            [] (float value, int) { return juce::String (value * 100.0f, 0) + " %"; })));
+
+    parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { IDs::satMix, 1 }, "Sat Mix", juce::NormalisableRange<float> { 0.0f, 1.0f }, 0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (
+            [] (float value, int) { return juce::String (value * 100.0f, 0) + " %"; })));
+
+    parameters.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { IDs::osMode, 1 }, "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 1));
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::mix, 1 }, "Mix", juce::NormalisableRange<float> { 0.0f, 1.0f }, 1.0f,

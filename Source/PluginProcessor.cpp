@@ -1,6 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+#include <cmath>
+
 namespace
 {
 float getPeakDb (const juce::AudioBuffer<float>& buffer, int channelsToMeasure)
@@ -22,6 +24,14 @@ float loadParam (const std::atomic<float>* parameter, float fallback) noexcept
 {
     return parameter != nullptr ? parameter->load (std::memory_order_relaxed) : fallback;
 }
+
+int loadChoiceIndex (const std::atomic<float>* parameter, int fallback, int minValue, int maxValue) noexcept
+{
+    if (parameter == nullptr)
+        return fallback;
+
+    return juce::jlimit (minValue, maxValue, static_cast<int> (std::lround (parameter->load (std::memory_order_relaxed))));
+}
 }
 
 TwoCCompressorAudioProcessor::TwoCCompressorAudioProcessor()
@@ -35,8 +45,36 @@ TwoCCompressorAudioProcessor::TwoCCompressorAudioProcessor()
 
 void TwoCCompressorAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    compressor.init (sampleRate, samplesPerBlock);
-    dryBuffer.setSize (getTotalNumOutputChannels(), juce::jmax (1, samplesPerBlock), false, false, true);
+    const auto numOutputChannels = juce::jmax (1, getTotalNumOutputChannels());
+    const auto maxBlock = juce::jmax (1, samplesPerBlock);
+
+    compressor.init (sampleRate, maxBlock);
+
+    dryBuffer.setSize (numOutputChannels, maxBlock, false, false, true);
+    saturationDryBuffer.setSize (numOutputChannels, maxBlock, false, false, true);
+
+    const auto osChannels = static_cast<size_t> (numOutputChannels);
+    const auto osBlock = static_cast<size_t> (maxBlock);
+
+    oversampling2x = std::make_unique<juce::dsp::Oversampling<float>> (
+        osChannels,
+        1,
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
+        true,
+        false);
+
+    oversampling4x = std::make_unique<juce::dsp::Oversampling<float>> (
+        osChannels,
+        2,
+        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
+        true,
+        false);
+
+    oversampling2x->reset();
+    oversampling2x->initProcessing (osBlock);
+
+    oversampling4x->reset();
+    oversampling4x->initProcessing (osBlock);
 
     inputMeterDb.store (0.0f);
     outputMeterDb.store (0.0f);
@@ -72,6 +110,9 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto scHpfHz = loadParam (scHpfHzParam, 0.0f);
     const auto kneeDb = loadParam (kneeDbParam, 6.0f);
     const auto makeupDb = loadParam (makeupDbParam, 0.0f);
+    const auto satDrive = juce::jlimit (0.0f, 1.0f, loadParam (satDriveParam, 0.0f));
+    const auto satMix = juce::jlimit (0.0f, 1.0f, loadParam (satMixParam, 0.0f));
+    const auto osMode = loadChoiceIndex (osModeParam, 1, 0, 2);
     const auto mix = juce::jlimit (0.0f, 1.0f, loadParam (mixParam, 1.0f));
     const auto outputDb = loadParam (outputDbParam, 0.0f);
 
@@ -107,8 +148,58 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     compressor.setParameters (compressorParams);
     compressor.processBlock (buffer);
 
-    const auto postGain = juce::Decibels::decibelsToGain (makeupDb + outputDb);
-    buffer.applyGain (postGain);
+    buffer.applyGain (juce::Decibels::decibelsToGain (makeupDb));
+
+    const auto saturationRequested = satDrive > 0.0001f && satMix > 0.0001f;
+    const auto hasSatBlendBufferCapacity = saturationDryBuffer.getNumChannels() >= numOutputChannels
+                                        && saturationDryBuffer.getNumSamples() >= numSamples;
+
+    auto effectiveSatMix = satMix;
+    if (saturationRequested && satMix < 0.999f && ! hasSatBlendBufferCapacity)
+        effectiveSatMix = 1.0f;
+
+    if (satDrive > 0.0001f && effectiveSatMix > 0.0001f)
+    {
+        const auto useSatBlend = effectiveSatMix < 0.999f;
+
+        if (useSatBlend)
+        {
+            for (auto channel = 0; channel < numOutputChannels; ++channel)
+                saturationDryBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
+        }
+
+        auto wetBlock = juce::dsp::AudioBlock<float> (buffer);
+
+        if (osMode == 1 && oversampling2x != nullptr)
+        {
+            auto upsampledBlock = oversampling2x->processSamplesUp (wetBlock);
+            saturation.processBlock (upsampledBlock, satDrive);
+            oversampling2x->processSamplesDown (wetBlock);
+        }
+        else if (osMode == 2 && oversampling4x != nullptr)
+        {
+            auto upsampledBlock = oversampling4x->processSamplesUp (wetBlock);
+            saturation.processBlock (upsampledBlock, satDrive);
+            oversampling4x->processSamplesDown (wetBlock);
+        }
+        else
+        {
+            saturation.processBlock (wetBlock, satDrive);
+        }
+
+        if (useSatBlend)
+        {
+            const auto cleanSatBlend = 1.0f - effectiveSatMix;
+
+            for (auto channel = 0; channel < numOutputChannels; ++channel)
+            {
+                buffer.applyGain (channel, 0, numSamples, effectiveSatMix);
+                buffer.addFrom (channel, 0, saturationDryBuffer, channel, 0, numSamples, cleanSatBlend);
+            }
+        }
+    }
+
+    buffer.applyGain (juce::Decibels::decibelsToGain (outputDb));
 
     if (useDryMix)
     {
@@ -155,6 +246,9 @@ void TwoCCompressorAudioProcessor::cacheParameterPointers()
     scHpfHzParam = apvts.getRawParameterValue (Parameters::IDs::scHpfHz);
     kneeDbParam = apvts.getRawParameterValue (Parameters::IDs::kneeDb);
     makeupDbParam = apvts.getRawParameterValue (Parameters::IDs::makeupDb);
+    satDriveParam = apvts.getRawParameterValue (Parameters::IDs::satDrive);
+    satMixParam = apvts.getRawParameterValue (Parameters::IDs::satMix);
+    osModeParam = apvts.getRawParameterValue (Parameters::IDs::osMode);
     mixParam = apvts.getRawParameterValue (Parameters::IDs::mix);
     outputDbParam = apvts.getRawParameterValue (Parameters::IDs::outputDb);
 }
