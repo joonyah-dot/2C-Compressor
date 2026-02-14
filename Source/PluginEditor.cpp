@@ -11,10 +11,11 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     setupControl (controls[2], "Ratio", Parameters::IDs::ratio);
     setupControl (controls[3], "Attack", Parameters::IDs::attackMs);
     setupControl (controls[4], "Release", Parameters::IDs::releaseMs);
-    setupControl (controls[5], "Knee", Parameters::IDs::kneeDb);
-    setupControl (controls[6], "Makeup", Parameters::IDs::makeupDb);
-    setupControl (controls[7], "Mix", Parameters::IDs::mix);
-    setupControl (controls[8], "Output", Parameters::IDs::outputDb);
+    setupControl (controls[5], "SC HPF", Parameters::IDs::scHpfHz);
+    setupControl (controls[6], "Knee", Parameters::IDs::kneeDb);
+    setupControl (controls[7], "Makeup", Parameters::IDs::makeupDb);
+    setupControl (controls[8], "Mix", Parameters::IDs::mix);
+    setupControl (controls[9], "Output", Parameters::IDs::outputDb);
 
     meterTitle.setText ("Meters", juce::dontSendNotification);
     meterTitle.setJustificationType (juce::Justification::centredLeft);
@@ -62,8 +63,11 @@ void TwoCCompressorAudioProcessorEditor::resized()
     auto meterArea = bounds.reduced (14);
 
     juce::Grid grid;
-    grid.templateRows = { juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr) };
-    grid.templateColumns = { juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr) };
+    grid.templateRows = { juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr) };
+    grid.templateColumns = {
+        juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr),
+        juce::Grid::TrackInfo (1_fr), juce::Grid::TrackInfo (1_fr)
+    };
     grid.rowGap = juce::Grid::Px { 12.0f };
     grid.columnGap = juce::Grid::Px { 12.0f };
 
@@ -115,6 +119,34 @@ void TwoCCompressorAudioProcessorEditor::setupControl (ParameterControl& control
     control.slider.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha (0.9f));
     control.slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     control.slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::white.withAlpha (0.08f));
+
+    if (parameterID == Parameters::IDs::scHpfHz)
+    {
+        control.slider.textFromValueFunction = [] (double value)
+        {
+            if (value <= 0.0)
+                return juce::String ("Off");
+
+            return juce::String (juce::roundToInt (value)) + " Hz";
+        };
+
+        control.slider.valueFromTextFunction = [] (const juce::String& text)
+        {
+            const auto trimmed = text.trim();
+
+            if (trimmed.isEmpty() || trimmed.equalsIgnoreCase ("off"))
+                return 0.0;
+
+            const auto hzText = trimmed.upToFirstOccurrenceOf ("hz", false, false).trim();
+            const auto hz = hzText.getDoubleValue();
+
+            if (hz <= 0.0)
+                return 0.0;
+
+            return juce::jlimit (20.0, 250.0, hz);
+        };
+    }
+
     addAndMakeVisible (control.slider);
 
     control.attachment = std::make_unique<SliderAttachment> (processor.getAPVTS(), parameterID, control.slider);

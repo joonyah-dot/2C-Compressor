@@ -1,5 +1,7 @@
 #include "Parameters.h"
 
+#include <cmath>
+
 namespace
 {
 juce::NormalisableRange<float> makeRatioRange()
@@ -43,12 +45,63 @@ juce::NormalisableRange<float> makeReleaseRange()
     range.setSkewForCentre (100.0f);
     return range;
 }
+
+juce::NormalisableRange<float> makeScHpfRange()
+{
+    return {
+        0.0f,
+        250.0f,
+        [] (float start, float end, float normalised)
+        {
+            juce::ignoreUnused (start, end);
+
+            constexpr auto minHzLocal = 20.0f;
+            constexpr auto maxHzLocal = 250.0f;
+            constexpr auto offZoneLocal = 0.08f;
+
+            const auto t = juce::jlimit (0.0f, 1.0f, normalised);
+
+            if (t <= offZoneLocal)
+                return 0.0f;
+
+            const auto mapped = (t - offZoneLocal) / (1.0f - offZoneLocal);
+            return minHzLocal * std::pow (maxHzLocal / minHzLocal, mapped);
+        },
+        [] (float start, float end, float value)
+        {
+            juce::ignoreUnused (start, end);
+
+            constexpr auto minHzLocal = 20.0f;
+            constexpr auto maxHzLocal = 250.0f;
+            constexpr auto offZoneLocal = 0.08f;
+
+            if (value <= 0.0f)
+                return 0.0f;
+
+            const auto v = juce::jlimit (minHzLocal, maxHzLocal, value);
+            const auto mapped = std::log (v / minHzLocal) / std::log (maxHzLocal / minHzLocal);
+            return offZoneLocal + mapped * (1.0f - offZoneLocal);
+        },
+        [] (float start, float end, float value)
+        {
+            juce::ignoreUnused (start, end);
+
+            constexpr auto minHzLocal = 20.0f;
+            constexpr auto maxHzLocal = 250.0f;
+
+            if (value <= 10.0f)
+                return 0.0f;
+
+            return juce::jlimit (minHzLocal, maxHzLocal, value);
+        }
+    };
+}
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameters;
-    parameters.reserve (9);
+    parameters.reserve (10);
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::inputDb, 1 }, "Input", juce::NormalisableRange<float> { -24.0f, 24.0f }, 0.0f,
@@ -74,6 +127,32 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
         juce::ParameterID { IDs::releaseMs, 1 }, "Release", makeReleaseRange(), 100.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (
             [] (float value, int) { return juce::String (value, 1) + " ms"; })));
+
+    parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { IDs::scHpfHz, 1 }, "SC HPF", makeScHpfRange(), 0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction ([] (float value, int)
+            {
+                if (value <= 0.0f)
+                    return juce::String ("Off");
+
+                return juce::String (juce::roundToInt (value)) + " Hz";
+            })
+            .withValueFromStringFunction ([] (const juce::String& text)
+            {
+                const auto trimmed = text.trim();
+
+                if (trimmed.isEmpty() || trimmed.equalsIgnoreCase ("off"))
+                    return 0.0f;
+
+                const auto hzText = trimmed.upToFirstOccurrenceOf ("hz", false, false).trim();
+                const auto hz = hzText.getFloatValue();
+
+                if (hz <= 0.0f)
+                    return 0.0f;
+
+                return juce::jlimit (20.0f, 250.0f, hz);
+            })));
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::kneeDb, 1 }, "Knee", juce::NormalisableRange<float> { 0.0f, 12.0f }, 6.0f,

@@ -30,7 +30,7 @@ private:
 
     TwoCCompressorAudioProcessor& processor;
 
-    std::array<ParameterControl, 9> controls;
+    std::array<ParameterControl, 10> controls;
 
     juce::Label meterTitle;
     juce::Label inputMeterLabel;

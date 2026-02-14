@@ -69,6 +69,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto ratio = loadParam (ratioParam, 4.0f);
     const auto attackMs = loadParam (attackMsParam, 10.0f);
     const auto releaseMs = loadParam (releaseMsParam, 100.0f);
+    const auto scHpfHz = loadParam (scHpfHzParam, 0.0f);
     const auto kneeDb = loadParam (kneeDbParam, 6.0f);
     const auto makeupDb = loadParam (makeupDbParam, 0.0f);
     const auto mix = juce::jlimit (0.0f, 1.0f, loadParam (mixParam, 1.0f));
@@ -101,6 +102,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     compressorParams.ratio = ratio;
     compressorParams.attackMs = attackMs;
     compressorParams.releaseMs = releaseMs;
+    compressorParams.scHpfHz = scHpfHz;
     compressorParams.kneeDb = kneeDb;
     compressor.setParameters (compressorParams);
     compressor.processBlock (buffer);
@@ -150,6 +152,7 @@ void TwoCCompressorAudioProcessor::cacheParameterPointers()
     ratioParam = apvts.getRawParameterValue (Parameters::IDs::ratio);
     attackMsParam = apvts.getRawParameterValue (Parameters::IDs::attackMs);
     releaseMsParam = apvts.getRawParameterValue (Parameters::IDs::releaseMs);
+    scHpfHzParam = apvts.getRawParameterValue (Parameters::IDs::scHpfHz);
     kneeDbParam = apvts.getRawParameterValue (Parameters::IDs::kneeDb);
     makeupDbParam = apvts.getRawParameterValue (Parameters::IDs::makeupDb);
     mixParam = apvts.getRawParameterValue (Parameters::IDs::mix);

@@ -13,6 +13,7 @@ public:
         float ratio = 4.0f;
         float attackMs = 10.0f;
         float releaseMs = 100.0f;
+        float scHpfHz = 0.0f;
         float kneeDb = 6.0f;
     };
 
@@ -21,14 +22,20 @@ public:
         sampleRate = juce::jmax (1.0, newSampleRate);
         reset();
         updateTimeConstants();
+        updateDetectorHpfConfig();
     }
 
     void reset()
     {
         rmsState.fill (0.0f);
+        hpfPrevInput.fill (0.0f);
+        hpfPrevOutput.fill (0.0f);
+
         gainReductionEnvelopeDb = 0.0f;
         smoothedGainLinear = 1.0f;
         lastGainReductionDb = 0.0f;
+
+        hpfCurrentAlpha = 0.0f;
     }
 
     void setParameters (const Parameters& newParameters)
@@ -38,8 +45,10 @@ public:
         parameters.attackMs = juce::jmax (0.01f, parameters.attackMs);
         parameters.releaseMs = juce::jmax (0.01f, parameters.releaseMs);
         parameters.kneeDb = juce::jmax (0.0f, parameters.kneeDb);
+        parameters.scHpfHz = parameters.scHpfHz <= 0.0f ? 0.0f : juce::jlimit (20.0f, 250.0f, parameters.scHpfHz);
 
         updateTimeConstants();
+        updateDetectorHpfConfig();
     }
 
     void processBlock (juce::AudioBuffer<float>& buffer)
@@ -53,16 +62,32 @@ public:
             return;
         }
 
+        const auto useDetectorHpf = detectorHpfEnabled;
         auto peakGainReductionInBlock = 0.0f;
 
         for (auto sample = 0; sample < numSamples; ++sample)
         {
+            if (useDetectorHpf)
+                hpfCurrentAlpha = hpfCoeffSmoothingCoeff * hpfCurrentAlpha + (1.0f - hpfCoeffSmoothingCoeff) * hpfTargetAlpha;
+
             auto linkedRms = 0.0f;
 
             for (auto channel = 0; channel < numChannels; ++channel)
             {
                 const auto x = buffer.getSample (channel, sample);
-                const auto squared = x * x;
+
+                auto detectorSample = x;
+                if (useDetectorHpf)
+                {
+                    auto& prevIn = hpfPrevInput[static_cast<size_t> (channel)];
+                    auto& prevOut = hpfPrevOutput[static_cast<size_t> (channel)];
+
+                    detectorSample = hpfCurrentAlpha * (prevOut + x - prevIn);
+                    prevIn = x;
+                    prevOut = detectorSample;
+                }
+
+                const auto squared = detectorSample * detectorSample;
 
                 auto& state = rmsState[static_cast<size_t> (channel)];
                 state = rmsCoeff * state + (1.0f - rmsCoeff) * squared;
@@ -111,6 +136,14 @@ private:
     {
         const auto t = juce::jlimit (0.0f, 1.0f, x);
         return t * t * (3.0f - 2.0f * t);
+    }
+
+    static float makeHpfAlpha (float cutoffHz, double sr)
+    {
+        const auto freq = juce::jlimit (20.0f, 250.0f, cutoffHz);
+        const auto dt = 1.0 / sr;
+        const auto rc = 1.0 / (2.0 * juce::MathConstants<double>::pi * static_cast<double> (freq));
+        return static_cast<float> (rc / (rc + dt));
     }
 
     float computeGainReductionDb (float inputDb) const
@@ -166,6 +199,28 @@ private:
 
         constexpr auto gainSmoothingMs = 2.0f;
         gainSmoothCoeff = coefficientFromMs (gainSmoothingMs, sampleRate);
+
+        constexpr auto detectorHpfSmoothingMs = 20.0f;
+        hpfCoeffSmoothingCoeff = coefficientFromMs (detectorHpfSmoothingMs, sampleRate);
+    }
+
+    void updateDetectorHpfConfig()
+    {
+        detectorHpfEnabled = parameters.scHpfHz > 0.0f;
+
+        if (! detectorHpfEnabled)
+        {
+            hpfTargetAlpha = 0.0f;
+            hpfCurrentAlpha = 0.0f;
+            hpfPrevInput.fill (0.0f);
+            hpfPrevOutput.fill (0.0f);
+            return;
+        }
+
+        hpfTargetAlpha = makeHpfAlpha (parameters.scHpfHz, sampleRate);
+
+        if (hpfCurrentAlpha <= 0.0f)
+            hpfCurrentAlpha = hpfTargetAlpha;
     }
 
     Parameters parameters;
@@ -178,7 +233,14 @@ private:
     float rmsCoeff = 0.0f;
     float gainSmoothCoeff = 0.0f;
 
+    float hpfTargetAlpha = 0.0f;
+    float hpfCurrentAlpha = 0.0f;
+    float hpfCoeffSmoothingCoeff = 0.0f;
+    bool detectorHpfEnabled = false;
+
     std::array<float, 2> rmsState { 0.0f, 0.0f };
+    std::array<float, 2> hpfPrevInput { 0.0f, 0.0f };
+    std::array<float, 2> hpfPrevOutput { 0.0f, 0.0f };
 
     float gainReductionEnvelopeDb = 0.0f;
     float smoothedGainLinear = 1.0f;
