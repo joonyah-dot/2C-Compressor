@@ -35,6 +35,8 @@ target_sources(TwoCCompressor PRIVATE
     Source/DSP/Saturation.h
     Source/DSP/EnvelopeFollower.h
     Source/DSP/LevelDetector.h
+    Source/UI/MeterComponent.h
+    Source/UI/MeterComponent.cpp
 )
 
 target_compile_features(TwoCCompressor PRIVATE cxx_std_17)

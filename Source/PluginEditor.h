@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 #include "PluginProcessor.h"
+#include "UI/MeterComponent.h"
 
 class TwoCCompressorAudioProcessorEditor : public juce::AudioProcessorEditor,
                                            private juce::Timer
@@ -28,7 +29,6 @@ private:
 
     void timerCallback() override;
     void setupControl (ParameterControl& control, const juce::String& name, const juce::String& parameterID);
-    static juce::String formatMeterDb (float db);
 
     TwoCCompressorAudioProcessor& processor;
 
@@ -42,9 +42,9 @@ private:
     std::unique_ptr<ButtonAttachment> scHpfEnabledAttachment;
 
     juce::Label meterTitle;
-    juce::Label inputMeterLabel;
-    juce::Label grMeterLabel;
-    juce::Label outputMeterLabel;
+    MeterComponent inputMeter;
+    MeterComponent grMeter;
+    MeterComponent outputMeter;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TwoCCompressorAudioProcessorEditor)
 };

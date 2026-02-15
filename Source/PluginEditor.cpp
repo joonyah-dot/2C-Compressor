@@ -2,7 +2,11 @@
 #include "Parameters.h"
 
 TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCCompressorAudioProcessor& p)
-    : AudioProcessorEditor (&p), processor (p)
+    : AudioProcessorEditor (&p),
+      processor (p),
+      inputMeter ("IN", MeterComponent::Type::inputOutput),
+      grMeter ("GR", MeterComponent::Type::gainReduction),
+      outputMeter ("OUT", MeterComponent::Type::inputOutput)
 {
     setSize (980, 560);
 
@@ -46,13 +50,9 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     meterTitle.setFont (juce::FontOptions { 16.0f, juce::Font::bold });
     addAndMakeVisible (meterTitle);
 
-    for (auto* meter : { &inputMeterLabel, &grMeterLabel, &outputMeterLabel })
-    {
-        meter->setJustificationType (juce::Justification::centredLeft);
-        meter->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
-        meter->setFont (juce::FontOptions { 15.0f });
-        addAndMakeVisible (*meter);
-    }
+    addAndMakeVisible (inputMeter);
+    addAndMakeVisible (grMeter);
+    addAndMakeVisible (outputMeter);
 
     timerCallback();
     startTimerHz (60);
@@ -129,10 +129,22 @@ void TwoCCompressorAudioProcessorEditor::resized()
     osModeBox.setBounds (osRow.removeFromLeft (120));
 
     meterTitle.setBounds (meterArea.removeFromTop (28));
-    meterArea.removeFromTop (8);
-    inputMeterLabel.setBounds (meterArea.removeFromTop (32));
-    grMeterLabel.setBounds (meterArea.removeFromTop (32));
-    outputMeterLabel.setBounds (meterArea.removeFromTop (32));
+    meterArea.removeFromTop (10);
+
+    juce::Grid meterGrid;
+    meterGrid.templateRows = { juce::Grid::TrackInfo (1_fr) };
+    meterGrid.templateColumns = {
+        juce::Grid::TrackInfo (1_fr),
+        juce::Grid::TrackInfo (1_fr),
+        juce::Grid::TrackInfo (1_fr)
+    };
+    meterGrid.columnGap = juce::Grid::Px { 10.0f };
+    meterGrid.items = {
+        juce::GridItem (inputMeter),
+        juce::GridItem (grMeter),
+        juce::GridItem (outputMeter)
+    };
+    meterGrid.performLayout (meterArea);
 }
 
 void TwoCCompressorAudioProcessorEditor::timerCallback()
@@ -141,9 +153,14 @@ void TwoCCompressorAudioProcessorEditor::timerCallback()
     const auto gr = processor.gainReductionDb.load (std::memory_order_relaxed);
     const auto out = processor.outputMeterDb.load (std::memory_order_relaxed);
 
-    inputMeterLabel.setText ("Input dB:  " + formatMeterDb (in), juce::dontSendNotification);
-    grMeterLabel.setText ("GR dB:      " + formatMeterDb (gr), juce::dontSendNotification);
-    outputMeterLabel.setText ("Output dB: " + formatMeterDb (out), juce::dontSendNotification);
+    inputMeter.setTargetDb (in);
+    grMeter.setTargetDb (gr);
+    outputMeter.setTargetDb (out);
+
+    constexpr auto dt = 1.0f / 60.0f;
+    inputMeter.tickSmoothing (dt);
+    grMeter.tickSmoothing (dt);
+    outputMeter.tickSmoothing (dt);
 }
 
 void TwoCCompressorAudioProcessorEditor::setupControl (ParameterControl& control, const juce::String& name, const juce::String& parameterID)
@@ -193,13 +210,5 @@ void TwoCCompressorAudioProcessorEditor::setupControl (ParameterControl& control
     addAndMakeVisible (control.slider);
 
     control.attachment = std::make_unique<SliderAttachment> (processor.getAPVTS(), parameterID, control.slider);
-}
-
-juce::String TwoCCompressorAudioProcessorEditor::formatMeterDb (float db)
-{
-    if (db <= -100.0f)
-        return "-inf";
-
-    return juce::String (db, 1);
 }
 
