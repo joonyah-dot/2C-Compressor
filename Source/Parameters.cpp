@@ -182,7 +182,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
             [] (float value, int) { return juce::String (value * 100.0f, 0) + " %"; })));
 
     parameters.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { IDs::osMode, 1 }, "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 1));
+        juce::ParameterID { IDs::osMode, 1 }, "Oversampling", juce::StringArray { "Off", "2x", "4x" }, 0));
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::mix, 1 }, "Mix", juce::NormalisableRange<float> { 0.0f, 1.0f }, 1.0f,
@@ -196,3 +196,4 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
 
     return { parameters.begin(), parameters.end() };
 }
+

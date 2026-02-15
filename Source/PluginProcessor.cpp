@@ -53,6 +53,11 @@ void TwoCCompressorAudioProcessor::prepareToPlay (double sampleRate, int samples
     dryBuffer.setSize (numOutputChannels, maxBlock, false, false, true);
     saturationDryBuffer.setSize (numOutputChannels, maxBlock, false, false, true);
 
+    const auto pendingMode = loadChoiceIndex (osModeParam, requestedOsMode.load (std::memory_order_relaxed), 0, 2);
+    activeOsMode = pendingMode;
+    requestedOsMode.store (pendingMode, std::memory_order_relaxed);
+    oversamplingReinitRequested.store (false, std::memory_order_relaxed);
+
     const auto osChannels = static_cast<size_t> (numOutputChannels);
     const auto osBlock = static_cast<size_t> (maxBlock);
 
@@ -112,9 +117,17 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto makeupDb = loadParam (makeupDbParam, 0.0f);
     const auto satDrive = juce::jlimit (0.0f, 1.0f, loadParam (satDriveParam, 0.0f));
     const auto satMix = juce::jlimit (0.0f, 1.0f, loadParam (satMixParam, 0.0f));
-    const auto osMode = loadChoiceIndex (osModeParam, 1, 0, 2);
+    const auto requestedMode = loadChoiceIndex (osModeParam, activeOsMode, 0, 2);
     const auto mix = juce::jlimit (0.0f, 1.0f, loadParam (mixParam, 1.0f));
     const auto outputDb = loadParam (outputDbParam, 0.0f);
+
+    if (requestedMode != activeOsMode)
+    {
+        requestedOsMode.store (requestedMode, std::memory_order_relaxed);
+        oversamplingReinitRequested.store (true, std::memory_order_relaxed);
+        // Oversampling mode changes are applied in prepareToPlay().
+        // In most hosts this means stop/restart transport (or reload audio engine).
+    }
 
     inputMeterDb.store (getPeakDb (buffer, numInputChannels), std::memory_order_relaxed);
 
@@ -136,6 +149,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     for (auto channel = numInputChannels; channel < numOutputChannels; ++channel)
         buffer.clear (channel, 0, numSamples);
 
+    // Wet path: Input trim -> Compressor -> Makeup -> Saturation
     buffer.applyGain (juce::Decibels::decibelsToGain (inputDb));
 
     CompressorDSP::Parameters compressorParams;
@@ -150,44 +164,48 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     buffer.applyGain (juce::Decibels::decibelsToGain (makeupDb));
 
-    const auto saturationRequested = satDrive > 0.0001f && satMix > 0.0001f;
-    const auto hasSatBlendBufferCapacity = saturationDryBuffer.getNumChannels() >= numOutputChannels
-                                        && saturationDryBuffer.getNumSamples() >= numSamples;
-
-    auto effectiveSatMix = satMix;
-    if (saturationRequested && satMix < 0.999f && ! hasSatBlendBufferCapacity)
-        effectiveSatMix = 1.0f;
-
-    if (satDrive > 0.0001f && effectiveSatMix > 0.0001f)
+    if (satDrive > 0.0001f && satMix > 0.0001f)
     {
-        const auto useSatBlend = effectiveSatMix < 0.999f;
+        const auto useOversampling = activeOsMode > 0;
+        auto effectiveSatMix = satMix;
 
-        if (useSatBlend)
+        if (useOversampling && satMix < 0.999f)
         {
-            for (auto channel = 0; channel < numOutputChannels; ++channel)
-                saturationDryBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
+            const auto hasSatBlendBufferCapacity = saturationDryBuffer.getNumChannels() >= numOutputChannels
+                                                && saturationDryBuffer.getNumSamples() >= numSamples;
+
+            if (hasSatBlendBufferCapacity)
+            {
+                for (auto channel = 0; channel < numOutputChannels; ++channel)
+                    saturationDryBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
+            }
+            else
+            {
+                effectiveSatMix = 1.0f;
+            }
         }
 
         auto wetBlock = juce::dsp::AudioBlock<float> (buffer);
 
-        if (osMode == 1 && oversampling2x != nullptr)
+        if (useOversampling && activeOsMode == 1 && oversampling2x != nullptr)
         {
             auto upsampledBlock = oversampling2x->processSamplesUp (wetBlock);
-            saturation.processBlock (upsampledBlock, satDrive);
+            saturation.processInPlace (upsampledBlock, satDrive, 1.0f);
             oversampling2x->processSamplesDown (wetBlock);
         }
-        else if (osMode == 2 && oversampling4x != nullptr)
+        else if (useOversampling && activeOsMode == 2 && oversampling4x != nullptr)
         {
             auto upsampledBlock = oversampling4x->processSamplesUp (wetBlock);
-            saturation.processBlock (upsampledBlock, satDrive);
+            saturation.processInPlace (upsampledBlock, satDrive, 1.0f);
             oversampling4x->processSamplesDown (wetBlock);
         }
         else
         {
-            saturation.processBlock (wetBlock, satDrive);
+            saturation.processInPlace (wetBlock, satDrive, effectiveSatMix);
+            effectiveSatMix = 1.0f;
         }
 
-        if (useSatBlend)
+        if (useOversampling && effectiveSatMix < 0.999f)
         {
             const auto cleanSatBlend = 1.0f - effectiveSatMix;
 
@@ -199,8 +217,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         }
     }
 
-    buffer.applyGain (juce::Decibels::decibelsToGain (outputDb));
-
+    // Then Wet/Dry mix.
     if (useDryMix)
     {
         const auto dryGain = 1.0f - mix;
@@ -211,6 +228,9 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
             buffer.addFrom (channel, 0, dryBuffer, channel, 0, numSamples, dryGain);
         }
     }
+
+    // Output trim is post wet/dry mix.
+    buffer.applyGain (juce::Decibels::decibelsToGain (outputDb));
 
     outputMeterDb.store (getPeakDb (buffer, numOutputChannels), std::memory_order_relaxed);
     gainReductionDb.store (compressor.getLastGainReductionDb(), std::memory_order_relaxed);
@@ -251,4 +271,7 @@ void TwoCCompressorAudioProcessor::cacheParameterPointers()
     osModeParam = apvts.getRawParameterValue (Parameters::IDs::osMode);
     mixParam = apvts.getRawParameterValue (Parameters::IDs::mix);
     outputDbParam = apvts.getRawParameterValue (Parameters::IDs::outputDb);
+
+    requestedOsMode.store (loadChoiceIndex (osModeParam, 0, 0, 2), std::memory_order_relaxed);
+    activeOsMode = requestedOsMode.load (std::memory_order_relaxed);
 }
