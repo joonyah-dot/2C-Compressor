@@ -69,6 +69,7 @@ private:
     std::atomic<float>* attackMsParam = nullptr;
     std::atomic<float>* releaseMsParam = nullptr;
     std::atomic<float>* scHpfHzParam = nullptr;
+    std::atomic<float>* scHpfEnabledParam = nullptr;
     std::atomic<float>* kneeDbParam = nullptr;
     std::atomic<float>* makeupDbParam = nullptr;
     std::atomic<float>* satDriveParam = nullptr;

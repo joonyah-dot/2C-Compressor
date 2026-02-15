@@ -14,8 +14,16 @@ public:
         const auto wetMix = juce::jlimit (0.0f, 1.0f, mix);
         const auto dryMix = 1.0f - wetMix;
 
-        const auto preGain = 1.0f + drive * 24.0f;
-        const auto outputNormalise = 1.0f / std::tanh (preGain);
+        // Gentler drive law for finer low-end control.
+        const auto driveClamped = juce::jlimit (0.0f, 1.0f, drive);
+        const auto driveT = driveClamped * driveClamped;
+        const auto driveDb = 12.0f * driveT;
+
+        const auto inputGain = juce::Decibels::decibelsToGain (driveDb);
+
+        // Partial auto compensation keeps tone changes while limiting loudness jumps.
+        constexpr auto compensationAmount = 0.70f;
+        const auto outputGain = juce::Decibels::decibelsToGain (-driveDb * compensationAmount);
 
         for (size_t channel = 0; channel < block.getNumChannels(); ++channel)
         {
@@ -24,7 +32,9 @@ public:
             for (size_t sample = 0; sample < block.getNumSamples(); ++sample)
             {
                 const auto dry = samples[sample];
-                const auto wet = std::tanh (dry * preGain) * outputNormalise;
+                const auto driven = dry * inputGain;
+                const auto shaped = std::tanh (driven);
+                const auto wet = shaped * outputGain;
                 samples[sample] = wet * wetMix + dry * dryMix;
             }
         }

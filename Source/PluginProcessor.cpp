@@ -113,6 +113,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto attackMs = loadParam (attackMsParam, 10.0f);
     const auto releaseMs = loadParam (releaseMsParam, 100.0f);
     const auto scHpfHz = loadParam (scHpfHzParam, 0.0f);
+    const auto scHpfEnabled = loadParam (scHpfEnabledParam, 1.0f) >= 0.5f;
     const auto kneeDb = loadParam (kneeDbParam, 6.0f);
     const auto makeupDb = loadParam (makeupDbParam, 0.0f);
     const auto satDrive = juce::jlimit (0.0f, 1.0f, loadParam (satDriveParam, 0.0f));
@@ -158,6 +159,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     compressorParams.attackMs = attackMs;
     compressorParams.releaseMs = releaseMs;
     compressorParams.scHpfHz = scHpfHz;
+    compressorParams.scHpfEnabled = scHpfEnabled;
     compressorParams.kneeDb = kneeDb;
     compressor.setParameters (compressorParams);
     compressor.processBlock (buffer);
@@ -252,7 +254,14 @@ void TwoCCompressorAudioProcessor::setStateInformation (const void* data, int si
     if (const auto xml = getXmlFromBinary (data, sizeInBytes))
     {
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            const auto hasScHpfEnabled = xml->toString().contains (Parameters::IDs::scHpfEnabled);
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
+
+            if (! hasScHpfEnabled)
+                if (auto* parameter = apvts.getParameter (Parameters::IDs::scHpfEnabled))
+                    parameter->setValueNotifyingHost (1.0f);
+        }
     }
 }
 
@@ -264,6 +273,7 @@ void TwoCCompressorAudioProcessor::cacheParameterPointers()
     attackMsParam = apvts.getRawParameterValue (Parameters::IDs::attackMs);
     releaseMsParam = apvts.getRawParameterValue (Parameters::IDs::releaseMs);
     scHpfHzParam = apvts.getRawParameterValue (Parameters::IDs::scHpfHz);
+    scHpfEnabledParam = apvts.getRawParameterValue (Parameters::IDs::scHpfEnabled);
     kneeDbParam = apvts.getRawParameterValue (Parameters::IDs::kneeDb);
     makeupDbParam = apvts.getRawParameterValue (Parameters::IDs::makeupDb);
     satDriveParam = apvts.getRawParameterValue (Parameters::IDs::satDrive);

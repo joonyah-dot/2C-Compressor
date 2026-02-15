@@ -108,7 +108,7 @@ juce::NormalisableRange<float> makeSatDriveRange()
 juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameters;
-    parameters.reserve (13);
+    parameters.reserve (14);
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::inputDb, 1 }, "Input", juce::NormalisableRange<float> { -24.0f, 24.0f }, 0.0f,
@@ -161,6 +161,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
                 return juce::jlimit (20.0f, 250.0f, hz);
             })));
 
+    parameters.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { IDs::scHpfEnabled, 1 }, "SC HPF On", true));
+
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::kneeDb, 1 }, "Knee", juce::NormalisableRange<float> { 0.0f, 12.0f }, 6.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (
@@ -196,4 +199,3 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
 
     return { parameters.begin(), parameters.end() };
 }
-

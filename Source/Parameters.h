@@ -12,6 +12,7 @@ inline constexpr const char* ratio = "ratio";
 inline constexpr const char* attackMs = "attackMs";
 inline constexpr const char* releaseMs = "releaseMs";
 inline constexpr const char* scHpfHz = "scHpfHz";
+inline constexpr const char* scHpfEnabled = "scHpfEnabled";
 inline constexpr const char* kneeDb = "kneeDb";
 inline constexpr const char* makeupDb = "makeupDb";
 inline constexpr const char* satDrive = "satDrive";

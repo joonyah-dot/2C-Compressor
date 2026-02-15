@@ -14,6 +14,7 @@ public:
         float attackMs = 10.0f;
         float releaseMs = 100.0f;
         float scHpfHz = 0.0f;
+        bool scHpfEnabled = true;
         float kneeDb = 6.0f;
     };
 
@@ -206,7 +207,7 @@ private:
 
     void updateDetectorHpfConfig()
     {
-        detectorHpfEnabled = parameters.scHpfHz > 0.0f;
+        detectorHpfEnabled = parameters.scHpfEnabled && parameters.scHpfHz > 0.0f;
 
         if (! detectorHpfEnabled)
         {

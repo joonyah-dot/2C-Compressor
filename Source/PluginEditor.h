@@ -17,6 +17,7 @@ public:
 private:
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     struct ParameterControl
     {
@@ -36,6 +37,9 @@ private:
     juce::Label osModeLabel;
     juce::ComboBox osModeBox;
     std::unique_ptr<ComboAttachment> osModeAttachment;
+
+    juce::ToggleButton scHpfEnabledButton;
+    std::unique_ptr<ButtonAttachment> scHpfEnabledAttachment;
 
     juce::Label meterTitle;
     juce::Label inputMeterLabel;

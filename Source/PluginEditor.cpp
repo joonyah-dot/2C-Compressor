@@ -36,6 +36,11 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
 
     osModeAttachment = std::make_unique<ComboAttachment> (processor.getAPVTS(), Parameters::IDs::osMode, osModeBox);
 
+    scHpfEnabledButton.setButtonText ("SC HPF On");
+    scHpfEnabledButton.setColour (juce::ToggleButton::textColourId, juce::Colours::white.withAlpha (0.9f));
+    addAndMakeVisible (scHpfEnabledButton);
+    scHpfEnabledAttachment = std::make_unique<ButtonAttachment> (processor.getAPVTS(), Parameters::IDs::scHpfEnabled, scHpfEnabledButton);
+
     meterTitle.setText ("Meters", juce::dontSendNotification);
     meterTitle.setJustificationType (juce::Justification::centredLeft);
     meterTitle.setFont (juce::FontOptions { 16.0f, juce::Font::bold });
@@ -112,6 +117,12 @@ void TwoCCompressorAudioProcessorEditor::resized()
         control.label.setBounds (area.removeFromTop (22));
         control.slider.setBounds (area);
     }
+
+    const auto toggleWidth = 92;
+    const auto toggleHeight = 20;
+    const auto toggleX = controls[5].slider.getRight() - toggleWidth;
+    const auto toggleY = controls[5].slider.getY() - toggleHeight - 2;
+    scHpfEnabledButton.setBounds (toggleX, toggleY, toggleWidth, toggleHeight);
 
     osModeLabel.setBounds (osRow.removeFromLeft (120));
     osRow.removeFromLeft (8);
@@ -191,3 +202,4 @@ juce::String TwoCCompressorAudioProcessorEditor::formatMeterDb (float db)
 
     return juce::String (db, 1);
 }
+
