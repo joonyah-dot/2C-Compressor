@@ -33,6 +33,7 @@ target_sources(TwoCCompressor PRIVATE
     Source/Parameters.h
     Source/DSP/CompressorDSP.h
     Source/DSP/Saturation.h
+    Source/DSP/MeterBallistics.h
     Source/DSP/EnvelopeFollower.h
     Source/DSP/LevelDetector.h
     Source/UI/MeterComponent.h

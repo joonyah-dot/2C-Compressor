@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "DSP/CompressorDSP.h"
+#include "DSP/MeterBallistics.h"
 #include "DSP/Saturation.h"
 #include "Parameters.h"
 
@@ -53,6 +54,8 @@ private:
 
     juce::AudioBuffer<float> dryBuffer;
     juce::AudioBuffer<float> saturationDryBuffer;
+    MeterBallistics inputMeterBallistics;
+    MeterBallistics outputMeterBallistics;
 
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling2x;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling4x;
@@ -66,6 +69,7 @@ private:
     std::atomic<float>* inputDbParam = nullptr;
     std::atomic<float>* thresholdDbParam = nullptr;
     std::atomic<float>* ratioParam = nullptr;
+    std::atomic<float>* timingModeParam = nullptr;
     std::atomic<float>* attackMsParam = nullptr;
     std::atomic<float>* releaseMsParam = nullptr;
     std::atomic<float>* scHpfHzParam = nullptr;

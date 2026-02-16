@@ -4,6 +4,8 @@
 #include <array>
 #include <cmath>
 
+#include "MeterBallistics.h"
+
 class CompressorDSP
 {
 public:
@@ -11,6 +13,7 @@ public:
     {
         float thresholdDb = -18.0f;
         float ratio = 4.0f;
+        bool useFixedTiming = false;
         float attackMs = 10.0f;
         float releaseMs = 100.0f;
         float scHpfHz = 0.0f;
@@ -22,6 +25,7 @@ public:
     {
         sampleRate = juce::jmax (1.0, newSampleRate);
         reset();
+        grMeterBallistics.prepare (sampleRate, 5.0f, 400.0f);
         updateTimeConstants();
         updateDetectorHpfConfig();
     }
@@ -35,6 +39,8 @@ public:
         gainReductionEnvelopeDb = 0.0f;
         smoothedGainLinear = 1.0f;
         lastGainReductionDb = 0.0f;
+        grMeterBallistics.reset (0.0f);
+        meterGainReductionDb = 0.0f;
 
         hpfCurrentAlpha = 0.0f;
     }
@@ -108,6 +114,7 @@ public:
             }
 
             gainReductionEnvelopeDb = grCoeff * gainReductionEnvelopeDb + (1.0f - grCoeff) * targetGainReductionDb;
+            meterGainReductionDb = grMeterBallistics.processSample (gainReductionEnvelopeDb);
 
             const auto targetGainLinear = juce::Decibels::decibelsToGain (-gainReductionEnvelopeDb);
             smoothedGainLinear = gainSmoothCoeff * smoothedGainLinear + (1.0f - gainSmoothCoeff) * targetGainLinear;
@@ -124,6 +131,11 @@ public:
     float getLastGainReductionDb() const noexcept
     {
         return lastGainReductionDb;
+    }
+
+    float getMeterGainReductionDb() const noexcept
+    {
+        return meterGainReductionDb;
     }
 
 private:
@@ -186,11 +198,14 @@ private:
 
     void updateTimeConstants()
     {
-        attackCoeff = coefficientFromMs (parameters.attackMs, sampleRate);
+        const auto effectiveAttackMs = parameters.useFixedTiming ? fixedAttackMs : parameters.attackMs;
+        const auto effectiveReleaseMs = parameters.useFixedTiming ? fixedReleaseMidMs : parameters.releaseMs;
+
+        attackCoeff = coefficientFromMs (effectiveAttackMs, sampleRate);
 
         constexpr auto releaseScale = 4.0f;
-        const auto releaseFastMs = juce::jlimit (5.0f, 2000.0f, parameters.releaseMs / releaseScale);
-        const auto releaseSlowMs = juce::jlimit (5.0f, 2000.0f, parameters.releaseMs * releaseScale);
+        const auto releaseFastMs = juce::jlimit (5.0f, 2000.0f, effectiveReleaseMs / releaseScale);
+        const auto releaseSlowMs = juce::jlimit (5.0f, 2000.0f, effectiveReleaseMs * releaseScale);
 
         releaseFastCoeff = coefficientFromMs (releaseFastMs, sampleRate);
         releaseSlowCoeff = coefficientFromMs (releaseSlowMs, sampleRate);
@@ -246,7 +261,11 @@ private:
     float gainReductionEnvelopeDb = 0.0f;
     float smoothedGainLinear = 1.0f;
     float lastGainReductionDb = 0.0f;
+    MeterBallistics grMeterBallistics;
+    float meterGainReductionDb = 0.0f;
 
     static constexpr float smallGrDb = 3.0f;
     static constexpr float largeGrDb = 10.0f;
+    static constexpr float fixedAttackMs = 10.0f;
+    static constexpr float fixedReleaseMidMs = 200.0f;
 };

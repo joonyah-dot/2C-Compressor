@@ -23,6 +23,22 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     setupControl (controls[10], "Mix", Parameters::IDs::mix);
     setupControl (controls[11], "Output", Parameters::IDs::outputDb);
 
+    timingModeLabel.setText ("Timing", juce::dontSendNotification);
+    timingModeLabel.setJustificationType (juce::Justification::centredLeft);
+    timingModeLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
+    timingModeLabel.setFont (juce::FontOptions { 14.0f, juce::Font::bold });
+    addAndMakeVisible (timingModeLabel);
+
+    timingModeBox.addItem ("Manual", 1);
+    timingModeBox.addItem ("Fixed", 2);
+    timingModeBox.setJustificationType (juce::Justification::centred);
+    timingModeBox.setColour (juce::ComboBox::backgroundColourId, juce::Colours::white.withAlpha (0.08f));
+    timingModeBox.setColour (juce::ComboBox::textColourId, juce::Colours::white.withAlpha (0.9f));
+    timingModeBox.setColour (juce::ComboBox::outlineColourId, juce::Colours::white.withAlpha (0.2f));
+    addAndMakeVisible (timingModeBox);
+
+    timingModeAttachment = std::make_unique<ComboAttachment> (processor.getAPVTS(), Parameters::IDs::timingMode, timingModeBox);
+
     osModeLabel.setText ("Oversampling", juce::dontSendNotification);
     osModeLabel.setJustificationType (juce::Justification::centredLeft);
     osModeLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
@@ -40,10 +56,14 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
 
     osModeAttachment = std::make_unique<ComboAttachment> (processor.getAPVTS(), Parameters::IDs::osMode, osModeBox);
 
-    scHpfEnabledButton.setButtonText ("SC HPF On");
+    scHpfEnabledButton.setButtonText ("SC HPF");
     scHpfEnabledButton.setColour (juce::ToggleButton::textColourId, juce::Colours::white.withAlpha (0.9f));
+    scHpfEnabledButton.setClickingTogglesState (true);
     addAndMakeVisible (scHpfEnabledButton);
     scHpfEnabledAttachment = std::make_unique<ButtonAttachment> (processor.getAPVTS(), Parameters::IDs::scHpfEnabled, scHpfEnabledButton);
+
+    timingModeParam = processor.getAPVTS().getRawParameterValue (Parameters::IDs::timingMode);
+    timingModeBox.onChange = [this] { updateTimingControlState(); };
 
     meterTitle.setText ("Meters", juce::dontSendNotification);
     meterTitle.setJustificationType (juce::Justification::centredLeft);
@@ -86,7 +106,7 @@ void TwoCCompressorAudioProcessorEditor::resized()
     auto controlsArea = bounds.removeFromLeft (bounds.proportionOfWidth (0.78f)).reduced (14);
     auto meterArea = bounds.reduced (14);
 
-    auto osRow = controlsArea.removeFromBottom (34);
+    auto utilityRow = controlsArea.removeFromBottom (34);
     controlsArea.removeFromBottom (10);
 
     juce::Grid grid;
@@ -118,15 +138,30 @@ void TwoCCompressorAudioProcessorEditor::resized()
         control.slider.setBounds (area);
     }
 
-    const auto toggleWidth = 92;
-    const auto toggleHeight = 20;
-    const auto toggleX = controls[5].slider.getRight() - toggleWidth;
-    const auto toggleY = controls[5].slider.getY() - toggleHeight - 2;
-    scHpfEnabledButton.setBounds (toggleX, toggleY, toggleWidth, toggleHeight);
+    // Reserve a dedicated row for the SC HPF toggle inside the SC HPF control cell
+    // so it never overlaps the parameter label text.
+    auto scHpfKnobArea = controls[5].slider.getBounds();
+    constexpr int toggleRowHeight = 20;
+    constexpr int toggleSpacing = 4;
+    constexpr int toggleHorizontalMargin = 4;
+    auto toggleRow = scHpfKnobArea.removeFromTop (toggleRowHeight);
+    controls[5].slider.setBounds (scHpfKnobArea.withTrimmedTop (toggleSpacing));
+    scHpfEnabledButton.setBounds (toggleRow.reduced (toggleHorizontalMargin, 2));
 
-    osModeLabel.setBounds (osRow.removeFromLeft (120));
-    osRow.removeFromLeft (8);
-    osModeBox.setBounds (osRow.removeFromLeft (120));
+    constexpr int utilityLabelWidth = 76;
+    constexpr int utilityBoxWidth = 112;
+    constexpr int utilityGap = 8;
+    constexpr int utilityGroupGap = 18;
+
+    timingModeLabel.setBounds (utilityRow.removeFromLeft (utilityLabelWidth));
+    utilityRow.removeFromLeft (utilityGap);
+    timingModeBox.setBounds (utilityRow.removeFromLeft (utilityBoxWidth));
+
+    utilityRow.removeFromLeft (utilityGroupGap);
+
+    osModeLabel.setBounds (utilityRow.removeFromLeft (utilityLabelWidth + 34));
+    utilityRow.removeFromLeft (utilityGap);
+    osModeBox.setBounds (utilityRow.removeFromLeft (utilityBoxWidth));
 
     meterTitle.setBounds (meterArea.removeFromTop (28));
     meterArea.removeFromTop (10);
@@ -153,14 +188,11 @@ void TwoCCompressorAudioProcessorEditor::timerCallback()
     const auto gr = processor.gainReductionDb.load (std::memory_order_relaxed);
     const auto out = processor.outputMeterDb.load (std::memory_order_relaxed);
 
-    inputMeter.setTargetDb (in);
-    grMeter.setTargetDb (gr);
-    outputMeter.setTargetDb (out);
+    inputMeter.setDbValue (in);
+    grMeter.setDbValue (gr);
+    outputMeter.setDbValue (out);
 
-    constexpr auto dt = 1.0f / 60.0f;
-    inputMeter.tickSmoothing (dt);
-    grMeter.tickSmoothing (dt);
-    outputMeter.tickSmoothing (dt);
+    updateTimingControlState();
 }
 
 void TwoCCompressorAudioProcessorEditor::setupControl (ParameterControl& control, const juce::String& name, const juce::String& parameterID)
@@ -210,5 +242,29 @@ void TwoCCompressorAudioProcessorEditor::setupControl (ParameterControl& control
     addAndMakeVisible (control.slider);
 
     control.attachment = std::make_unique<SliderAttachment> (processor.getAPVTS(), parameterID, control.slider);
+}
+
+void TwoCCompressorAudioProcessorEditor::updateTimingControlState()
+{
+    const auto modeIndex = timingModeParam != nullptr
+                             ? juce::roundToInt (timingModeParam->load (std::memory_order_relaxed))
+                             : 0;
+    const auto shouldEnableManual = (modeIndex == 0);
+
+    if (shouldEnableManual == manualTimingEnabled)
+        return;
+
+    manualTimingEnabled = shouldEnableManual;
+
+    const auto setControlEnabled = [this] (int index, bool enabled)
+    {
+        controls[static_cast<size_t> (index)].slider.setEnabled (enabled);
+        controls[static_cast<size_t> (index)].label.setEnabled (enabled);
+        controls[static_cast<size_t> (index)].slider.setAlpha (enabled ? 1.0f : 0.5f);
+        controls[static_cast<size_t> (index)].label.setAlpha (enabled ? 0.9f : 0.45f);
+    };
+
+    setControlEnabled (3, manualTimingEnabled); // Attack
+    setControlEnabled (4, manualTimingEnabled); // Release
 }
 

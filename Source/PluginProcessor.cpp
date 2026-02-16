@@ -5,21 +5,6 @@
 
 namespace
 {
-float getPeakDb (const juce::AudioBuffer<float>& buffer, int channelsToMeasure)
-{
-    const auto numChannels = juce::jmin (channelsToMeasure, buffer.getNumChannels());
-
-    if (numChannels <= 0 || buffer.getNumSamples() <= 0)
-        return -100.0f;
-
-    auto peak = 0.0f;
-
-    for (auto ch = 0; ch < numChannels; ++ch)
-        peak = juce::jmax (peak, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
-
-    return juce::Decibels::gainToDecibels (peak, -100.0f);
-}
-
 float loadParam (const std::atomic<float>* parameter, float fallback) noexcept
 {
     return parameter != nullptr ? parameter->load (std::memory_order_relaxed) : fallback;
@@ -31,6 +16,33 @@ int loadChoiceIndex (const std::atomic<float>* parameter, int fallback, int minV
         return fallback;
 
     return juce::jlimit (minValue, maxValue, static_cast<int> (std::lround (parameter->load (std::memory_order_relaxed))));
+}
+
+float processMeterBuffer (
+    const juce::AudioBuffer<float>& buffer,
+    int channelsToMeasure,
+    MeterBallistics& ballistics) noexcept
+{
+    const auto numChannels = juce::jmin (channelsToMeasure, buffer.getNumChannels());
+    const auto numSamples = buffer.getNumSamples();
+
+    if (numChannels <= 0 || numSamples <= 0)
+        return ballistics.processSample (-100.0f);
+
+    auto smoothedDb = ballistics.getCurrentDb();
+
+    for (auto sample = 0; sample < numSamples; ++sample)
+    {
+        auto samplePeak = 0.0f;
+
+        for (auto channel = 0; channel < numChannels; ++channel)
+            samplePeak = juce::jmax (samplePeak, std::abs (buffer.getSample (channel, sample)));
+
+        const auto sampleDb = juce::Decibels::gainToDecibels (samplePeak, -100.0f);
+        smoothedDb = ballistics.processSample (sampleDb);
+    }
+
+    return smoothedDb;
 }
 }
 
@@ -81,6 +93,11 @@ void TwoCCompressorAudioProcessor::prepareToPlay (double sampleRate, int samples
     oversampling4x->reset();
     oversampling4x->initProcessing (osBlock);
 
+    inputMeterBallistics.prepare (sampleRate, 10.0f, 300.0f);
+    inputMeterBallistics.reset (-100.0f);
+    outputMeterBallistics.prepare (sampleRate, 10.0f, 300.0f);
+    outputMeterBallistics.reset (-100.0f);
+
     inputMeterDb.store (0.0f);
     outputMeterDb.store (0.0f);
     gainReductionDb.store (0.0f);
@@ -110,6 +127,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto inputDb = loadParam (inputDbParam, 0.0f);
     const auto thresholdDb = loadParam (thresholdDbParam, -18.0f);
     const auto ratio = loadParam (ratioParam, 4.0f);
+    const auto timingMode = loadChoiceIndex (timingModeParam, 0, 0, 1);
     const auto attackMs = loadParam (attackMsParam, 10.0f);
     const auto releaseMs = loadParam (releaseMsParam, 100.0f);
     const auto scHpfHz = loadParam (scHpfHzParam, 0.0f);
@@ -130,7 +148,8 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         // In most hosts this means stop/restart transport (or reload audio engine).
     }
 
-    inputMeterDb.store (getPeakDb (buffer, numInputChannels), std::memory_order_relaxed);
+    const auto smoothedInputDb = processMeterBuffer (buffer, numInputChannels, inputMeterBallistics);
+    inputMeterDb.store (smoothedInputDb, std::memory_order_relaxed);
 
     const auto hasDryBufferCapacity = dryBuffer.getNumChannels() >= numOutputChannels
                                    && dryBuffer.getNumSamples() >= numSamples;
@@ -156,6 +175,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     CompressorDSP::Parameters compressorParams;
     compressorParams.thresholdDb = thresholdDb;
     compressorParams.ratio = ratio;
+    compressorParams.useFixedTiming = (timingMode == 1);
     compressorParams.attackMs = attackMs;
     compressorParams.releaseMs = releaseMs;
     compressorParams.scHpfHz = scHpfHz;
@@ -234,8 +254,9 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     // Output trim is post wet/dry mix.
     buffer.applyGain (juce::Decibels::decibelsToGain (outputDb));
 
-    outputMeterDb.store (getPeakDb (buffer, numOutputChannels), std::memory_order_relaxed);
-    gainReductionDb.store (compressor.getLastGainReductionDb(), std::memory_order_relaxed);
+    const auto smoothedOutputDb = processMeterBuffer (buffer, numOutputChannels, outputMeterBallistics);
+    outputMeterDb.store (smoothedOutputDb, std::memory_order_relaxed);
+    gainReductionDb.store (compressor.getMeterGainReductionDb(), std::memory_order_relaxed);
 }
 
 juce::AudioProcessorEditor* TwoCCompressorAudioProcessor::createEditor()
@@ -256,11 +277,16 @@ void TwoCCompressorAudioProcessor::setStateInformation (const void* data, int si
         if (xml->hasTagName (apvts.state.getType()))
         {
             const auto hasScHpfEnabled = xml->toString().contains (Parameters::IDs::scHpfEnabled);
+            const auto hasTimingMode = xml->toString().contains (Parameters::IDs::timingMode);
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
 
             if (! hasScHpfEnabled)
                 if (auto* parameter = apvts.getParameter (Parameters::IDs::scHpfEnabled))
                     parameter->setValueNotifyingHost (1.0f);
+
+            if (! hasTimingMode)
+                if (auto* parameter = apvts.getParameter (Parameters::IDs::timingMode))
+                    parameter->setValueNotifyingHost (0.0f);
         }
     }
 }
@@ -270,6 +296,7 @@ void TwoCCompressorAudioProcessor::cacheParameterPointers()
     inputDbParam = apvts.getRawParameterValue (Parameters::IDs::inputDb);
     thresholdDbParam = apvts.getRawParameterValue (Parameters::IDs::thresholdDb);
     ratioParam = apvts.getRawParameterValue (Parameters::IDs::ratio);
+    timingModeParam = apvts.getRawParameterValue (Parameters::IDs::timingMode);
     attackMsParam = apvts.getRawParameterValue (Parameters::IDs::attackMs);
     releaseMsParam = apvts.getRawParameterValue (Parameters::IDs::releaseMs);
     scHpfHzParam = apvts.getRawParameterValue (Parameters::IDs::scHpfHz);

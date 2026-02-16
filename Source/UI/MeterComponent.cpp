@@ -1,7 +1,5 @@
 #include "MeterComponent.h"
 
-#include <cmath>
-
 MeterComponent::MeterComponent (juce::String meterName, Type meterType)
     : name (std::move (meterName)), type (meterType)
 {
@@ -12,21 +10,13 @@ MeterComponent::MeterComponent (juce::String meterName, Type meterType)
         targetDb = 0.0f;
         displayedDb = 0.0f;
         lastPaintedDb = 0.0f;
-        attackMs = 18.0f;
-        releaseMs = 260.0f;
     }
 }
 
-void MeterComponent::setTargetDb (float newTargetDb) noexcept
+void MeterComponent::setDbValue (float newDb) noexcept
 {
-    targetDb = juce::jlimit (minDb, maxDb, newTargetDb);
-}
-
-void MeterComponent::tickSmoothing (float deltaSeconds)
-{
-    const auto isRising = targetDb > displayedDb;
-    const auto coeff = makeCoefficient (isRising ? attackMs : releaseMs, deltaSeconds);
-    displayedDb = coeff * displayedDb + (1.0f - coeff) * targetDb;
+    targetDb = juce::jlimit (minDb, maxDb, newDb);
+    displayedDb = targetDb;
 
     // Repaint only when movement is meaningful to keep GUI work low.
     if (std::abs (displayedDb - lastPaintedDb) >= 0.05f)
@@ -99,10 +89,4 @@ juce::String MeterComponent::formatValueText (float db) const
         return "-inf";
 
     return juce::String (db, 1) + " dB";
-}
-
-float MeterComponent::makeCoefficient (float timeMs, float deltaSeconds) noexcept
-{
-    const auto tau = juce::jmax (0.001f, timeMs * 0.001f);
-    return std::exp (-deltaSeconds / tau);
 }

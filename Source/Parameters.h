@@ -9,6 +9,7 @@ namespace IDs
 inline constexpr const char* inputDb = "inputDb";
 inline constexpr const char* thresholdDb = "thresholdDb";
 inline constexpr const char* ratio = "ratio";
+inline constexpr const char* timingMode = "timingMode";
 inline constexpr const char* attackMs = "attackMs";
 inline constexpr const char* releaseMs = "releaseMs";
 inline constexpr const char* scHpfHz = "scHpfHz";
