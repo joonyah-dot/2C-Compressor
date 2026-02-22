@@ -70,6 +70,12 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     meterTitle.setFont (juce::FontOptions { 16.0f, juce::Font::bold });
     addAndMakeVisible (meterTitle);
 
+    osModeInUseLabel.setText ("OS: Off", juce::dontSendNotification);
+    osModeInUseLabel.setJustificationType (juce::Justification::centredRight);
+    osModeInUseLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
+    osModeInUseLabel.setFont (juce::FontOptions { 13.0f, juce::Font::bold });
+    addAndMakeVisible (osModeInUseLabel);
+
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (grMeter);
     addAndMakeVisible (outputMeter);
@@ -163,7 +169,9 @@ void TwoCCompressorAudioProcessorEditor::resized()
     utilityRow.removeFromLeft (utilityGap);
     osModeBox.setBounds (utilityRow.removeFromLeft (utilityBoxWidth));
 
-    meterTitle.setBounds (meterArea.removeFromTop (28));
+    auto meterHeader = meterArea.removeFromTop (28);
+    meterTitle.setBounds (meterHeader.removeFromLeft (meterHeader.proportionOfWidth (0.5f)));
+    osModeInUseLabel.setBounds (meterHeader);
     meterArea.removeFromTop (10);
 
     juce::Grid meterGrid;
@@ -187,10 +195,20 @@ void TwoCCompressorAudioProcessorEditor::timerCallback()
     const auto in = processor.inputMeterDb.load (std::memory_order_relaxed);
     const auto gr = processor.gainReductionDb.load (std::memory_order_relaxed);
     const auto out = processor.outputMeterDb.load (std::memory_order_relaxed);
+    const auto osModeInUse = processor.osModeInUse.load (std::memory_order_relaxed);
 
     inputMeter.setDbValue (in);
     grMeter.setDbValue (gr);
     outputMeter.setDbValue (out);
+
+    juce::String osText = "OS: Off";
+    if (osModeInUse == 1)
+        osText = "OS: 2x";
+    else if (osModeInUse == 2)
+        osText = "OS: 4x";
+
+    if (osModeInUseLabel.getText() != osText)
+        osModeInUseLabel.setText (osText, juce::dontSendNotification);
 
     updateTimingControlState();
 }

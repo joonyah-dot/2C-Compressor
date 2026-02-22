@@ -47,6 +47,7 @@ private:
     std::unique_ptr<ButtonAttachment> scHpfEnabledAttachment;
 
     juce::Label meterTitle;
+    juce::Label osModeInUseLabel;
     MeterComponent inputMeter;
     MeterComponent grMeter;
     MeterComponent outputMeter;

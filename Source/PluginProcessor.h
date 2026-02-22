@@ -44,6 +44,7 @@ public:
     std::atomic<float> inputMeterDb { 0.0f };
     std::atomic<float> outputMeterDb { 0.0f };
     std::atomic<float> gainReductionDb { 0.0f };
+    std::atomic<int> osModeInUse { 0 };
 
 private:
     void cacheParameterPointers();
@@ -59,12 +60,6 @@ private:
 
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling2x;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling4x;
-
-    // Oversampling mode changes are deferred until prepareToPlay() to avoid
-    // reconfiguration/allocation work in the audio thread.
-    std::atomic<bool> oversamplingReinitRequested { false };
-    std::atomic<int> requestedOsMode { 0 };
-    int activeOsMode = 0;
 
     std::atomic<float>* inputDbParam = nullptr;
     std::atomic<float>* thresholdDbParam = nullptr;

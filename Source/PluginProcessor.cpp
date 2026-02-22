@@ -65,11 +65,6 @@ void TwoCCompressorAudioProcessor::prepareToPlay (double sampleRate, int samples
     dryBuffer.setSize (numOutputChannels, maxBlock, false, false, true);
     saturationDryBuffer.setSize (numOutputChannels, maxBlock, false, false, true);
 
-    const auto pendingMode = loadChoiceIndex (osModeParam, requestedOsMode.load (std::memory_order_relaxed), 0, 2);
-    activeOsMode = pendingMode;
-    requestedOsMode.store (pendingMode, std::memory_order_relaxed);
-    oversamplingReinitRequested.store (false, std::memory_order_relaxed);
-
     const auto osChannels = static_cast<size_t> (numOutputChannels);
     const auto osBlock = static_cast<size_t> (maxBlock);
 
@@ -101,6 +96,7 @@ void TwoCCompressorAudioProcessor::prepareToPlay (double sampleRate, int samples
     inputMeterDb.store (0.0f);
     outputMeterDb.store (0.0f);
     gainReductionDb.store (0.0f);
+    osModeInUse.store (0, std::memory_order_relaxed);
 }
 
 void TwoCCompressorAudioProcessor::releaseResources() {}
@@ -136,17 +132,10 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto makeupDb = loadParam (makeupDbParam, 0.0f);
     const auto satDrive = juce::jlimit (0.0f, 1.0f, loadParam (satDriveParam, 0.0f));
     const auto satMix = juce::jlimit (0.0f, 1.0f, loadParam (satMixParam, 0.0f));
-    const auto requestedMode = loadChoiceIndex (osModeParam, activeOsMode, 0, 2);
+    const auto osModeRequested = loadChoiceIndex (osModeParam, 0, 0, 2);
     const auto mix = juce::jlimit (0.0f, 1.0f, loadParam (mixParam, 1.0f));
     const auto outputDb = loadParam (outputDbParam, 0.0f);
-
-    if (requestedMode != activeOsMode)
-    {
-        requestedOsMode.store (requestedMode, std::memory_order_relaxed);
-        oversamplingReinitRequested.store (true, std::memory_order_relaxed);
-        // Oversampling mode changes are applied in prepareToPlay().
-        // In most hosts this means stop/restart transport (or reload audio engine).
-    }
+    auto osModeAppliedThisBlock = 0;
 
     const auto smoothedInputDb = processMeterBuffer (buffer, numInputChannels, inputMeterBallistics);
     inputMeterDb.store (smoothedInputDb, std::memory_order_relaxed);
@@ -188,10 +177,12 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     if (satDrive > 0.0001f && satMix > 0.0001f)
     {
-        const auto useOversampling = activeOsMode > 0;
+        const auto use2x = (osModeRequested == 1 && oversampling2x != nullptr);
+        const auto use4x = (osModeRequested == 2 && oversampling4x != nullptr);
+        const auto useOversampledPath = use2x || use4x;
         auto effectiveSatMix = satMix;
 
-        if (useOversampling && satMix < 0.999f)
+        if (useOversampledPath && satMix < 0.999f)
         {
             const auto hasSatBlendBufferCapacity = saturationDryBuffer.getNumChannels() >= numOutputChannels
                                                 && saturationDryBuffer.getNumSamples() >= numSamples;
@@ -209,25 +200,28 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
         auto wetBlock = juce::dsp::AudioBlock<float> (buffer);
 
-        if (useOversampling && activeOsMode == 1 && oversampling2x != nullptr)
+        if (use2x)
         {
             auto upsampledBlock = oversampling2x->processSamplesUp (wetBlock);
             saturation.processInPlace (upsampledBlock, satDrive, 1.0f);
             oversampling2x->processSamplesDown (wetBlock);
+            osModeAppliedThisBlock = 1;
         }
-        else if (useOversampling && activeOsMode == 2 && oversampling4x != nullptr)
+        else if (use4x)
         {
             auto upsampledBlock = oversampling4x->processSamplesUp (wetBlock);
             saturation.processInPlace (upsampledBlock, satDrive, 1.0f);
             oversampling4x->processSamplesDown (wetBlock);
+            osModeAppliedThisBlock = 2;
         }
         else
         {
             saturation.processInPlace (wetBlock, satDrive, effectiveSatMix);
             effectiveSatMix = 1.0f;
+            osModeAppliedThisBlock = 0;
         }
 
-        if (useOversampling && effectiveSatMix < 0.999f)
+        if (useOversampledPath && effectiveSatMix < 0.999f)
         {
             const auto cleanSatBlend = 1.0f - effectiveSatMix;
 
@@ -257,6 +251,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto smoothedOutputDb = processMeterBuffer (buffer, numOutputChannels, outputMeterBallistics);
     outputMeterDb.store (smoothedOutputDb, std::memory_order_relaxed);
     gainReductionDb.store (compressor.getMeterGainReductionDb(), std::memory_order_relaxed);
+    osModeInUse.store (osModeAppliedThisBlock, std::memory_order_relaxed);
 }
 
 juce::AudioProcessorEditor* TwoCCompressorAudioProcessor::createEditor()
@@ -308,7 +303,4 @@ void TwoCCompressorAudioProcessor::cacheParameterPointers()
     osModeParam = apvts.getRawParameterValue (Parameters::IDs::osMode);
     mixParam = apvts.getRawParameterValue (Parameters::IDs::mix);
     outputDbParam = apvts.getRawParameterValue (Parameters::IDs::outputDb);
-
-    requestedOsMode.store (loadChoiceIndex (osModeParam, 0, 0, 2), std::memory_order_relaxed);
-    activeOsMode = requestedOsMode.load (std::memory_order_relaxed);
 }

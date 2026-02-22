@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.15)
 
 project(TwoCCompressor VERSION 0.1.0)
 
+option(BUILD_VST3_HARNESS "Build VST3 harness CLI" ON)
+
 add_subdirectory(extern/JUCE)
 
 juce_add_plugin(TwoCCompressor
@@ -51,3 +53,7 @@ target_link_libraries(TwoCCompressor PRIVATE
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags
 )
+
+if(BUILD_VST3_HARNESS)
+    add_subdirectory(tools/vst3_harness)
+endif()
