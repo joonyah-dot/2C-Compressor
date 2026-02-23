@@ -193,6 +193,7 @@ if (!(Test-Path $DryKick)) { throw "SC HPF dry input not found: $DryKick" }
 
 $results = New-Object System.Collections.Generic.List[object]
 $testResults = New-Object System.Collections.Generic.List[object]
+$paramIndexMap = Get-ParameterIndexMap
 
 function Add-TestResult {
   param(
@@ -238,7 +239,9 @@ Invoke-TestCase -Name "P0 bypass null" -Body {
   # Test P0: Hard bypass null (deterministic harness/plugin sanity check)
   # -------------------------
   $P0Dir = ".\artifacts\test_p0_clean"
-  $P0Params = "15=1"
+  $P0Params = Build-SetParams -ParameterIndexMap $paramIndexMap -ValuesByName @{
+    "Bypass" = 1.0
+  }
   Reset-Directory $P0Dir
   & $Harness render --plugin $Plugin --in $Dry --outdir $P0Dir --sr $Sr --bs $Bs --ch $Ch --warmup $Warmup --set-params $P0Params
   if ($LASTEXITCODE -ne 0) {
@@ -257,8 +260,6 @@ Invoke-TestCase -Name "P0 bypass null" -Body {
   Assert-Lt "P0 Peak" $P0Metrics.PeakDb -100
   Write-Host ""
 }
-
-$paramIndexMap = Get-ParameterIndexMap
 
 Invoke-TestCase -Name "P0b neutral controls" -Body {
   # -------------------------
@@ -357,6 +358,46 @@ Invoke-TestCase -Name "Timing manual vs fixed vocal" -Body {
 
   $results.Add([pscustomobject]@{ Test = "Timing MAN vs VOC"; Rms_dB = $TimingMetrics.RmsDb; Peak_dB = $TimingMetrics.PeakDb })
   Assert-Gt "Timing MAN vs VOC RMS" $TimingMetrics.RmsDb -70
+  Write-Host ""
+}
+
+Invoke-TestCase -Name "Character clean vs opto" -Body {
+  # -------------------------
+  # Test: Character switch should alter behavior under identical settings.
+  # -------------------------
+  $CharacterBase = @{
+    "Timing" = 1.0
+    "Threshold" = 0.2
+    "Ratio" = 0.9
+    "Attack" = 0.5
+    "Release" = 0.5
+    "Drive" = 0.0
+    "Sat Mix" = 0.0
+    "Oversampling" = 0.0
+    "Mix" = 1.0
+    "Bypass" = 0.0
+  }
+
+  $CharacterCleanDir = ".\artifacts\test_character_clean"
+  $CharacterOptoDir = ".\artifacts\test_character_opto"
+
+  $CharacterCleanParams = $CharacterBase.Clone()
+  $CharacterCleanParams["Character"] = 0.0
+  $CharacterOptoParams = $CharacterBase.Clone()
+  $CharacterOptoParams["Character"] = 1.0
+
+  Invoke-RenderCase -OutDir $CharacterCleanDir -SetParams (Build-SetParams -ParameterIndexMap $paramIndexMap -ValuesByName $CharacterCleanParams) -InputPath $DryKick
+  Invoke-RenderCase -OutDir $CharacterOptoDir -SetParams (Build-SetParams -ParameterIndexMap $paramIndexMap -ValuesByName $CharacterOptoParams) -InputPath $DryKick
+
+  $WetCharacterClean = Resolve-WetPath $CharacterCleanDir
+  $WetCharacterOpto = Resolve-WetPath $CharacterOptoDir
+  $CharacterAnalysisDir = ".\artifacts\test_character_clean_vs_opto\analysis"
+
+  Invoke-AnalyzeCase -DryPath $WetCharacterClean -WetPath $WetCharacterOpto -OutDir $CharacterAnalysisDir -DoNull
+  $CharacterMetrics = Read-Metrics $CharacterAnalysisDir
+
+  $results.Add([pscustomobject]@{ Test = "Character CLEAN vs OPTO"; Rms_dB = $CharacterMetrics.RmsDb; Peak_dB = $CharacterMetrics.PeakDb })
+  Assert-Gt "Character CLEAN vs OPTO RMS" $CharacterMetrics.RmsDb -80
   Write-Host ""
 }
 

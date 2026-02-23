@@ -65,6 +65,7 @@ private:
     std::atomic<float>* thresholdDbParam = nullptr;
     std::atomic<float>* ratioParam = nullptr;
     std::atomic<float>* timingModeParam = nullptr;
+    std::atomic<float>* characterParam = nullptr;
     std::atomic<float>* attackMsParam = nullptr;
     std::atomic<float>* releaseMsParam = nullptr;
     std::atomic<float>* scHpfHzParam = nullptr;

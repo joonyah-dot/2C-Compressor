@@ -58,6 +58,38 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
         addAndMakeVisible (button);
     }
 
+    characterLabel.setText ("CHAR", juce::dontSendNotification);
+    characterLabel.setJustificationType (juce::Justification::centredLeft);
+    characterLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
+    characterLabel.setFont (juce::FontOptions { 14.0f, juce::Font::bold });
+    addAndMakeVisible (characterLabel);
+
+    characterBox.addItem ("Clean", 1);
+    characterBox.addItem ("Opto", 2);
+    characterAttachment = std::make_unique<ComboAttachment> (processor.getAPVTS(), Parameters::IDs::character, characterBox);
+
+    static constexpr std::array<const char*, 2> characterShortLabels { "CLEAN", "OPTO" };
+    static constexpr auto characterSwitchRadioGroupId = 0x2c02;
+
+    for (size_t i = 0; i < characterButtons.size(); ++i)
+    {
+        auto& button = characterButtons[i];
+        button.setButtonText (characterShortLabels[i]);
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (characterSwitchRadioGroupId);
+        button.setConnectedEdges ((i == 0 ? 0 : juce::Button::ConnectedOnLeft) | (i == characterButtons.size() - 1 ? 0 : juce::Button::ConnectedOnRight));
+        button.setColour (juce::TextButton::buttonColourId, juce::Colours::white.withAlpha (0.08f));
+        button.setColour (juce::TextButton::buttonOnColourId, juce::Colour::fromRGB (75, 174, 224).withAlpha (0.95f));
+        button.setColour (juce::TextButton::textColourOffId, juce::Colours::white.withAlpha (0.85f));
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::black.withAlpha (0.88f));
+        button.onClick = [this, index = static_cast<int> (i)]
+        {
+            if (characterButtons[static_cast<size_t> (index)].getToggleState())
+                characterBox.setSelectedItemIndex (index, juce::sendNotificationSync);
+        };
+        addAndMakeVisible (button);
+    }
+
     osModeLabel.setText ("Oversampling", juce::dontSendNotification);
     osModeLabel.setJustificationType (juce::Justification::centredLeft);
     osModeLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
@@ -82,6 +114,7 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     scHpfEnabledAttachment = std::make_unique<ButtonAttachment> (processor.getAPVTS(), Parameters::IDs::scHpfEnabled, scHpfEnabledButton);
 
     timingModeParam = processor.getAPVTS().getRawParameterValue (Parameters::IDs::timingMode);
+    characterParam = processor.getAPVTS().getRawParameterValue (Parameters::IDs::character);
 
     meterTitle.setText ("Meters", juce::dontSendNotification);
     meterTitle.setJustificationType (juce::Justification::centredLeft);
@@ -172,13 +205,16 @@ void TwoCCompressorAudioProcessorEditor::resized()
     controls[5].slider.setBounds (scHpfKnobArea.withTrimmedTop (toggleSpacing));
     scHpfEnabledButton.setBounds (toggleRow.reduced (toggleHorizontalMargin, 2));
 
-    constexpr int utilityLabelWidth = 76;
-    constexpr int timingSwitchWidth = 224;
+    constexpr int utilityLabelWidth = 68;
+    constexpr int timingSwitchWidth = 206;
     constexpr int timingSwitchHeight = 26;
     constexpr int timingSegmentGap = 2;
     constexpr int utilityGap = 8;
-    constexpr int utilityGroupGap = 18;
-    constexpr int utilityBoxWidth = 112;
+    constexpr int utilityGroupGap = 12;
+    constexpr int characterLabelWidth = 54;
+    constexpr int characterSwitchWidth = 142;
+    constexpr int characterSegmentGap = 2;
+    constexpr int utilityBoxWidth = 98;
 
     timingModeLabel.setBounds (utilityRow.removeFromLeft (utilityLabelWidth));
     utilityRow.removeFromLeft (utilityGap);
@@ -197,7 +233,22 @@ void TwoCCompressorAudioProcessorEditor::resized()
 
     utilityRow.removeFromLeft (utilityGroupGap);
 
-    osModeLabel.setBounds (utilityRow.removeFromLeft (utilityLabelWidth + 34));
+    characterLabel.setBounds (utilityRow.removeFromLeft (characterLabelWidth));
+    utilityRow.removeFromLeft (utilityGap);
+
+    auto characterSwitchBounds = utilityRow.removeFromLeft (characterSwitchWidth)
+                                            .withSizeKeepingCentre (characterSwitchWidth, timingSwitchHeight);
+    const auto characterSegmentWidth = (characterSwitchBounds.getWidth() - characterSegmentGap) / 2;
+    auto characterSegmentX = characterSwitchBounds.getX();
+    for (size_t i = 0; i < characterButtons.size(); ++i)
+    {
+        characterButtons[i].setBounds (characterSegmentX, characterSwitchBounds.getY(), characterSegmentWidth, characterSwitchBounds.getHeight());
+        characterSegmentX += characterSegmentWidth + characterSegmentGap;
+    }
+
+    utilityRow.removeFromLeft (utilityGroupGap);
+
+    osModeLabel.setBounds (utilityRow.removeFromLeft (utilityLabelWidth + 20));
     utilityRow.removeFromLeft (utilityGap);
     osModeBox.setBounds (utilityRow.removeFromLeft (utilityBoxWidth));
 
@@ -243,6 +294,7 @@ void TwoCCompressorAudioProcessorEditor::timerCallback()
         osModeInUseLabel.setText (osText, juce::dontSendNotification);
 
     updateTimingControlState();
+    updateCharacterControlState();
 }
 
 void TwoCCompressorAudioProcessorEditor::setupControl (ParameterControl& control, const juce::String& name, const juce::String& parameterID)
@@ -320,5 +372,15 @@ void TwoCCompressorAudioProcessorEditor::updateTimingControlState()
 
     setControlEnabled (3, manualTimingEnabled); // Attack
     setControlEnabled (4, manualTimingEnabled); // Release
+}
+
+void TwoCCompressorAudioProcessorEditor::updateCharacterControlState()
+{
+    const auto modeIndex = characterParam != nullptr
+                             ? juce::jlimit (0, 1, juce::roundToInt (characterParam->load (std::memory_order_relaxed)))
+                             : 0;
+
+    for (size_t i = 0; i < characterButtons.size(); ++i)
+        characterButtons[i].setToggleState (modeIndex == static_cast<int> (i), juce::dontSendNotification);
 }
 

@@ -108,7 +108,7 @@ juce::NormalisableRange<float> makeSatDriveRange()
 juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameters;
-    parameters.reserve (15);
+    parameters.reserve (16);
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::inputDb, 1 }, "Input", juce::NormalisableRange<float> { -24.0f, 24.0f }, 0.0f,
@@ -127,6 +127,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
 
     parameters.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { IDs::timingMode, 1 }, "Timing", juce::StringArray { "Manual", "Fixed Vocal", "Fixed Fast", "Fixed Slow" }, 0));
+
+    parameters.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { IDs::character, 1 }, "Character", juce::StringArray { "Clean", "Opto" }, 0));
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::attackMs, 1 }, "Attack", makeAttackRange(), 10.0f,

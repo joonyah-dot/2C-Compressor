@@ -30,6 +30,7 @@ private:
     void timerCallback() override;
     void setupControl (ParameterControl& control, const juce::String& name, const juce::String& parameterID);
     void updateTimingControlState();
+    void updateCharacterControlState();
 
     TwoCCompressorAudioProcessor& processor;
 
@@ -43,6 +44,13 @@ private:
     juce::ComboBox timingModeBox;
     std::unique_ptr<ComboAttachment> timingModeAttachment;
     std::array<juce::TextButton, 4> timingModeButtons;
+    std::atomic<float>* timingModeParam = nullptr;
+
+    juce::Label characterLabel;
+    juce::ComboBox characterBox;
+    std::unique_ptr<ComboAttachment> characterAttachment;
+    std::array<juce::TextButton, 2> characterButtons;
+    std::atomic<float>* characterParam = nullptr;
 
     juce::ToggleButton scHpfEnabledButton;
     std::unique_ptr<ButtonAttachment> scHpfEnabledAttachment;
@@ -53,7 +61,6 @@ private:
     MeterComponent grMeter;
     MeterComponent outputMeter;
 
-    std::atomic<float>* timingModeParam = nullptr;
     bool manualTimingEnabled = true;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TwoCCompressorAudioProcessorEditor)

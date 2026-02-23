@@ -19,9 +19,16 @@ public:
             fixedSlow
         };
 
+        enum CharacterMode
+        {
+            clean = 0,
+            opto
+        };
+
         float thresholdDb = -18.0f;
         float ratio = 4.0f;
         int timingMode = manual;
+        int characterMode = clean;
         float attackMs = 10.0f;
         float releaseMs = 100.0f;
         float scHpfHz = 0.0f;
@@ -58,6 +65,7 @@ public:
         parameters = newParameters;
         parameters.ratio = juce::jmax (1.0f, parameters.ratio);
         parameters.timingMode = juce::jlimit (0, 3, parameters.timingMode);
+        parameters.characterMode = juce::jlimit (0, 1, parameters.characterMode);
         parameters.attackMs = juce::jmax (0.01f, parameters.attackMs);
         parameters.releaseMs = juce::jmax (0.01f, parameters.releaseMs);
         parameters.kneeDb = juce::jmax (0.0f, parameters.kneeDb);
@@ -118,7 +126,14 @@ public:
 
             if (targetGainReductionDb <= gainReductionEnvelopeDb)
             {
-                const auto releaseBlend = smoothstep ((gainReductionEnvelopeDb - smallGrDb) / (largeGrDb - smallGrDb));
+                auto releaseBlend = smoothstep ((gainReductionEnvelopeDb - smallGrDb) / (largeGrDb - smallGrDb));
+
+                if (parameters.characterMode == Parameters::opto)
+                {
+                    // Keep faster recovery at high GR while extending the tail for smoother leveling.
+                    releaseBlend = std::pow (releaseBlend, optoReleaseTailPower);
+                }
+
                 grCoeff = juce::jmap (releaseBlend, releaseSlowCoeff, releaseFastCoeff);
             }
 
@@ -172,7 +187,10 @@ private:
     {
         const auto threshold = parameters.thresholdDb;
         const auto ratio = juce::jmax (1.0f, parameters.ratio);
-        const auto knee = juce::jmax (0.0f, parameters.kneeDb);
+        auto knee = juce::jmax (0.0f, parameters.kneeDb);
+
+        if (parameters.characterMode == Parameters::opto)
+            knee = juce::jlimit (0.0f, 12.0f, knee + 2.0f);
 
         auto outputDb = inputDb;
 
@@ -235,7 +253,7 @@ private:
         releaseFastCoeff = coefficientFromMs (releaseFastMs, sampleRate);
         releaseSlowCoeff = coefficientFromMs (releaseSlowMs, sampleRate);
 
-        constexpr auto rmsWindowMs = 10.0f;
+        const auto rmsWindowMs = parameters.characterMode == Parameters::opto ? optoRmsWindowMs : cleanRmsWindowMs;
         rmsCoeff = coefficientFromMs (rmsWindowMs, sampleRate);
 
         constexpr auto gainSmoothingMs = 2.0f;
@@ -297,4 +315,7 @@ private:
     static constexpr float fixedFastReleaseMidMs = 120.0f;
     static constexpr float fixedSlowAttackMs = 15.0f;
     static constexpr float fixedSlowReleaseMidMs = 400.0f;
+    static constexpr float cleanRmsWindowMs = 10.0f;
+    static constexpr float optoRmsWindowMs = 14.0f;
+    static constexpr float optoReleaseTailPower = 1.35f;
 };

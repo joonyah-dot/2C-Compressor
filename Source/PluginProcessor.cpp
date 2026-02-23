@@ -124,6 +124,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto thresholdDb = loadParam (thresholdDbParam, -18.0f);
     const auto ratio = loadParam (ratioParam, 4.0f);
     const auto timingMode = loadChoiceIndex (timingModeParam, 0, 0, 3);
+    const auto characterMode = loadChoiceIndex (characterParam, 0, 0, 1);
     const auto attackMs = loadParam (attackMsParam, 10.0f);
     const auto releaseMs = loadParam (releaseMsParam, 100.0f);
     const auto scHpfHz = loadParam (scHpfHzParam, 0.0f);
@@ -165,6 +166,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     compressorParams.thresholdDb = thresholdDb;
     compressorParams.ratio = ratio;
     compressorParams.timingMode = timingMode;
+    compressorParams.characterMode = characterMode;
     compressorParams.attackMs = attackMs;
     compressorParams.releaseMs = releaseMs;
     compressorParams.scHpfHz = scHpfHz;
@@ -292,6 +294,7 @@ void TwoCCompressorAudioProcessor::cacheParameterPointers()
     thresholdDbParam = apvts.getRawParameterValue (Parameters::IDs::thresholdDb);
     ratioParam = apvts.getRawParameterValue (Parameters::IDs::ratio);
     timingModeParam = apvts.getRawParameterValue (Parameters::IDs::timingMode);
+    characterParam = apvts.getRawParameterValue (Parameters::IDs::character);
     attackMsParam = apvts.getRawParameterValue (Parameters::IDs::attackMs);
     releaseMsParam = apvts.getRawParameterValue (Parameters::IDs::releaseMs);
     scHpfHzParam = apvts.getRawParameterValue (Parameters::IDs::scHpfHz);
