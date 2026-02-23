@@ -30,14 +30,33 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     addAndMakeVisible (timingModeLabel);
 
     timingModeBox.addItem ("Manual", 1);
-    timingModeBox.addItem ("Fixed", 2);
-    timingModeBox.setJustificationType (juce::Justification::centred);
-    timingModeBox.setColour (juce::ComboBox::backgroundColourId, juce::Colours::white.withAlpha (0.08f));
-    timingModeBox.setColour (juce::ComboBox::textColourId, juce::Colours::white.withAlpha (0.9f));
-    timingModeBox.setColour (juce::ComboBox::outlineColourId, juce::Colours::white.withAlpha (0.2f));
-    addAndMakeVisible (timingModeBox);
+    timingModeBox.addItem ("Fixed Vocal", 2);
+    timingModeBox.addItem ("Fixed Fast", 3);
+    timingModeBox.addItem ("Fixed Slow", 4);
 
     timingModeAttachment = std::make_unique<ComboAttachment> (processor.getAPVTS(), Parameters::IDs::timingMode, timingModeBox);
+
+    static constexpr std::array<const char*, 4> timingShortLabels { "MAN", "VOC", "FAST", "SLOW" };
+    static constexpr auto timingSwitchRadioGroupId = 0x2c01;
+
+    for (size_t i = 0; i < timingModeButtons.size(); ++i)
+    {
+        auto& button = timingModeButtons[i];
+        button.setButtonText (timingShortLabels[i]);
+        button.setClickingTogglesState (true);
+        button.setRadioGroupId (timingSwitchRadioGroupId);
+        button.setConnectedEdges ((i == 0 ? 0 : juce::Button::ConnectedOnLeft) | (i == timingModeButtons.size() - 1 ? 0 : juce::Button::ConnectedOnRight));
+        button.setColour (juce::TextButton::buttonColourId, juce::Colours::white.withAlpha (0.08f));
+        button.setColour (juce::TextButton::buttonOnColourId, juce::Colour::fromRGB (75, 174, 224).withAlpha (0.95f));
+        button.setColour (juce::TextButton::textColourOffId, juce::Colours::white.withAlpha (0.85f));
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::black.withAlpha (0.88f));
+        button.onClick = [this, index = static_cast<int> (i)]
+        {
+            if (timingModeButtons[static_cast<size_t> (index)].getToggleState())
+                timingModeBox.setSelectedItemIndex (index, juce::sendNotificationSync);
+        };
+        addAndMakeVisible (button);
+    }
 
     osModeLabel.setText ("Oversampling", juce::dontSendNotification);
     osModeLabel.setJustificationType (juce::Justification::centredLeft);
@@ -63,7 +82,6 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     scHpfEnabledAttachment = std::make_unique<ButtonAttachment> (processor.getAPVTS(), Parameters::IDs::scHpfEnabled, scHpfEnabledButton);
 
     timingModeParam = processor.getAPVTS().getRawParameterValue (Parameters::IDs::timingMode);
-    timingModeBox.onChange = [this] { updateTimingControlState(); };
 
     meterTitle.setText ("Meters", juce::dontSendNotification);
     meterTitle.setJustificationType (juce::Justification::centredLeft);
@@ -155,13 +173,27 @@ void TwoCCompressorAudioProcessorEditor::resized()
     scHpfEnabledButton.setBounds (toggleRow.reduced (toggleHorizontalMargin, 2));
 
     constexpr int utilityLabelWidth = 76;
-    constexpr int utilityBoxWidth = 112;
+    constexpr int timingSwitchWidth = 224;
+    constexpr int timingSwitchHeight = 26;
+    constexpr int timingSegmentGap = 2;
     constexpr int utilityGap = 8;
     constexpr int utilityGroupGap = 18;
+    constexpr int utilityBoxWidth = 112;
 
     timingModeLabel.setBounds (utilityRow.removeFromLeft (utilityLabelWidth));
     utilityRow.removeFromLeft (utilityGap);
-    timingModeBox.setBounds (utilityRow.removeFromLeft (utilityBoxWidth));
+
+    auto timingSwitchBounds = utilityRow.removeFromLeft (timingSwitchWidth)
+                                            .withSizeKeepingCentre (timingSwitchWidth, timingSwitchHeight);
+
+    const auto segmentWidth = (timingSwitchBounds.getWidth() - (timingSegmentGap * 3)) / 4;
+    auto segmentX = timingSwitchBounds.getX();
+
+    for (size_t i = 0; i < timingModeButtons.size(); ++i)
+    {
+        timingModeButtons[i].setBounds (segmentX, timingSwitchBounds.getY(), segmentWidth, timingSwitchBounds.getHeight());
+        segmentX += segmentWidth + timingSegmentGap;
+    }
 
     utilityRow.removeFromLeft (utilityGroupGap);
 
@@ -265,8 +297,12 @@ void TwoCCompressorAudioProcessorEditor::setupControl (ParameterControl& control
 void TwoCCompressorAudioProcessorEditor::updateTimingControlState()
 {
     const auto modeIndex = timingModeParam != nullptr
-                             ? juce::roundToInt (timingModeParam->load (std::memory_order_relaxed))
+                             ? juce::jlimit (0, 3, juce::roundToInt (timingModeParam->load (std::memory_order_relaxed)))
                              : 0;
+
+    for (size_t i = 0; i < timingModeButtons.size(); ++i)
+        timingModeButtons[i].setToggleState (modeIndex == static_cast<int> (i), juce::dontSendNotification);
+
     const auto shouldEnableManual = (modeIndex == 0);
 
     if (shouldEnableManual == manualTimingEnabled)

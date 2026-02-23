@@ -11,9 +11,17 @@ class CompressorDSP
 public:
     struct Parameters
     {
+        enum TimingMode
+        {
+            manual = 0,
+            fixedVocal,
+            fixedFast,
+            fixedSlow
+        };
+
         float thresholdDb = -18.0f;
         float ratio = 4.0f;
-        bool useFixedTiming = false;
+        int timingMode = manual;
         float attackMs = 10.0f;
         float releaseMs = 100.0f;
         float scHpfHz = 0.0f;
@@ -49,6 +57,7 @@ public:
     {
         parameters = newParameters;
         parameters.ratio = juce::jmax (1.0f, parameters.ratio);
+        parameters.timingMode = juce::jlimit (0, 3, parameters.timingMode);
         parameters.attackMs = juce::jmax (0.01f, parameters.attackMs);
         parameters.releaseMs = juce::jmax (0.01f, parameters.releaseMs);
         parameters.kneeDb = juce::jmax (0.0f, parameters.kneeDb);
@@ -198,8 +207,24 @@ private:
 
     void updateTimeConstants()
     {
-        const auto effectiveAttackMs = parameters.useFixedTiming ? fixedAttackMs : parameters.attackMs;
-        const auto effectiveReleaseMs = parameters.useFixedTiming ? fixedReleaseMidMs : parameters.releaseMs;
+        auto effectiveAttackMs = parameters.attackMs;
+        auto effectiveReleaseMs = parameters.releaseMs;
+
+        if (parameters.timingMode == Parameters::fixedVocal)
+        {
+            effectiveAttackMs = fixedVocalAttackMs;
+            effectiveReleaseMs = fixedVocalReleaseMidMs;
+        }
+        else if (parameters.timingMode == Parameters::fixedFast)
+        {
+            effectiveAttackMs = fixedFastAttackMs;
+            effectiveReleaseMs = fixedFastReleaseMidMs;
+        }
+        else if (parameters.timingMode == Parameters::fixedSlow)
+        {
+            effectiveAttackMs = fixedSlowAttackMs;
+            effectiveReleaseMs = fixedSlowReleaseMidMs;
+        }
 
         attackCoeff = coefficientFromMs (effectiveAttackMs, sampleRate);
 
@@ -266,6 +291,10 @@ private:
 
     static constexpr float smallGrDb = 3.0f;
     static constexpr float largeGrDb = 10.0f;
-    static constexpr float fixedAttackMs = 10.0f;
-    static constexpr float fixedReleaseMidMs = 200.0f;
+    static constexpr float fixedVocalAttackMs = 10.0f;
+    static constexpr float fixedVocalReleaseMidMs = 200.0f;
+    static constexpr float fixedFastAttackMs = 3.0f;
+    static constexpr float fixedFastReleaseMidMs = 120.0f;
+    static constexpr float fixedSlowAttackMs = 15.0f;
+    static constexpr float fixedSlowReleaseMidMs = 400.0f;
 };

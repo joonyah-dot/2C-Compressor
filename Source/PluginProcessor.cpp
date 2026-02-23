@@ -123,7 +123,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto inputDb = loadParam (inputDbParam, 0.0f);
     const auto thresholdDb = loadParam (thresholdDbParam, -18.0f);
     const auto ratio = loadParam (ratioParam, 4.0f);
-    const auto timingMode = loadChoiceIndex (timingModeParam, 0, 0, 1);
+    const auto timingMode = loadChoiceIndex (timingModeParam, 0, 0, 3);
     const auto attackMs = loadParam (attackMsParam, 10.0f);
     const auto releaseMs = loadParam (releaseMsParam, 100.0f);
     const auto scHpfHz = loadParam (scHpfHzParam, 0.0f);
@@ -164,7 +164,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     CompressorDSP::Parameters compressorParams;
     compressorParams.thresholdDb = thresholdDb;
     compressorParams.ratio = ratio;
-    compressorParams.useFixedTiming = (timingMode == 1);
+    compressorParams.timingMode = timingMode;
     compressorParams.attackMs = attackMs;
     compressorParams.releaseMs = releaseMs;
     compressorParams.scHpfHz = scHpfHz;

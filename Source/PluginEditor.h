@@ -42,6 +42,7 @@ private:
     juce::Label timingModeLabel;
     juce::ComboBox timingModeBox;
     std::unique_ptr<ComboAttachment> timingModeAttachment;
+    std::array<juce::TextButton, 4> timingModeButtons;
 
     juce::ToggleButton scHpfEnabledButton;
     std::unique_ptr<ButtonAttachment> scHpfEnabledAttachment;

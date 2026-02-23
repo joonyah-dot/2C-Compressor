@@ -126,7 +126,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
             [] (float value, int) { return juce::String (value, 2) + ":1"; })));
 
     parameters.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { IDs::timingMode, 1 }, "Timing", juce::StringArray { "Manual", "Fixed" }, 0));
+        juce::ParameterID { IDs::timingMode, 1 }, "Timing", juce::StringArray { "Manual", "Fixed Vocal", "Fixed Fast", "Fixed Slow" }, 0));
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::attackMs, 1 }, "Attack", makeAttackRange(), 10.0f,
