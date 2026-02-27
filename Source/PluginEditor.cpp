@@ -113,6 +113,12 @@ TwoCCompressorAudioProcessorEditor::TwoCCompressorAudioProcessorEditor (TwoCComp
     addAndMakeVisible (scHpfEnabledButton);
     scHpfEnabledAttachment = std::make_unique<ButtonAttachment> (processor.getAPVTS(), Parameters::IDs::scHpfEnabled, scHpfEnabledButton);
 
+    autoMakeupButton.setButtonText ("AUTO");
+    autoMakeupButton.setColour (juce::ToggleButton::textColourId, juce::Colours::white.withAlpha (0.9f));
+    autoMakeupButton.setClickingTogglesState (true);
+    addAndMakeVisible (autoMakeupButton);
+    autoMakeupAttachment = std::make_unique<ButtonAttachment> (processor.getAPVTS(), Parameters::IDs::autoMakeup, autoMakeupButton);
+
     timingModeParam = processor.getAPVTS().getRawParameterValue (Parameters::IDs::timingMode);
     characterParam = processor.getAPVTS().getRawParameterValue (Parameters::IDs::character);
 
@@ -204,6 +210,11 @@ void TwoCCompressorAudioProcessorEditor::resized()
     auto toggleRow = scHpfKnobArea.removeFromTop (toggleRowHeight);
     controls[5].slider.setBounds (scHpfKnobArea.withTrimmedTop (toggleSpacing));
     scHpfEnabledButton.setBounds (toggleRow.reduced (toggleHorizontalMargin, 2));
+
+    auto makeupKnobArea = controls[7].slider.getBounds();
+    auto makeupToggleRow = makeupKnobArea.removeFromTop (toggleRowHeight);
+    controls[7].slider.setBounds (makeupKnobArea.withTrimmedTop (toggleSpacing));
+    autoMakeupButton.setBounds (makeupToggleRow.removeFromRight (62).reduced (2));
 
     constexpr int utilityLabelWidth = 68;
     constexpr int timingSwitchWidth = 206;

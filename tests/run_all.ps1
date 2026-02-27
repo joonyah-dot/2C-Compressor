@@ -151,8 +151,10 @@ function Read-Metrics {
 
   $m = Get-Content $metricsPath -Raw | ConvertFrom-Json
   return [pscustomobject]@{
-    RmsDb  = [double]$m.rms_delta_db
-    PeakDb = [double]$m.peak_delta_db
+    RmsDb    = [double]$m.rms_delta_db
+    PeakDb   = [double]$m.peak_delta_db
+    RmsDryDb = [double]$m.rms_dry_db
+    RmsWetDb = [double]$m.rms_wet_db
   }
 }
 
@@ -318,6 +320,52 @@ Invoke-TestCase -Name "C1 compress fixed" -Body {
   Write-Host ""
 }
 
+Invoke-TestCase -Name "Auto makeup wet RMS lift" -Body {
+  # -------------------------
+  # Test: under heavy compression, auto makeup ON should raise wet RMS vs OFF.
+  # -------------------------
+  $AutoBaseParams = @{
+    "Timing" = 1.0
+    "Threshold" = 0.15
+    "Ratio" = 0.95
+    "Makeup" = 0.333333
+    "Drive" = 0.0
+    "Sat Mix" = 0.0
+    "Oversampling" = 0.0
+    "Mix" = 1.0
+    "Bypass" = 0.0
+  }
+
+  $AutoOffDir = ".\artifacts\test_auto_makeup_off"
+  $AutoOnDir = ".\artifacts\test_auto_makeup_on"
+
+  $AutoOffParams = $AutoBaseParams.Clone()
+  $AutoOffParams["Auto Makeup"] = 0.0
+
+  $AutoOnParams = $AutoBaseParams.Clone()
+  $AutoOnParams["Auto Makeup"] = 1.0
+
+  Invoke-RenderCase -OutDir $AutoOffDir -SetParams (Build-SetParams -ParameterIndexMap $paramIndexMap -ValuesByName $AutoOffParams) -InputPath $DryKick
+  Invoke-RenderCase -OutDir $AutoOnDir -SetParams (Build-SetParams -ParameterIndexMap $paramIndexMap -ValuesByName $AutoOnParams) -InputPath $DryKick
+
+  $WetAutoOff = Resolve-WetPath $AutoOffDir
+  $WetAutoOn = Resolve-WetPath $AutoOnDir
+
+  $AutoOffAnalysisDir = Join-Path $AutoOffDir "analysis_vs_dry"
+  $AutoOnAnalysisDir = Join-Path $AutoOnDir "analysis_vs_dry"
+
+  Invoke-AnalyzeCase -DryPath $DryKick -WetPath $WetAutoOff -OutDir $AutoOffAnalysisDir
+  Invoke-AnalyzeCase -DryPath $DryKick -WetPath $WetAutoOn -OutDir $AutoOnAnalysisDir
+
+  $AutoOffMetrics = Read-Metrics $AutoOffAnalysisDir
+  $AutoOnMetrics = Read-Metrics $AutoOnAnalysisDir
+  $autoWetLiftDb = $AutoOnMetrics.RmsWetDb - $AutoOffMetrics.RmsWetDb
+
+  $results.Add([pscustomobject]@{ Test = "Auto makeup wet lift"; Rms_dB = $autoWetLiftDb; Peak_dB = 0.25 })
+  Assert-Gt "Auto makeup wet lift" $autoWetLiftDb 0.25
+  Write-Host ""
+}
+
 Invoke-TestCase -Name "Timing manual vs fixed vocal" -Body {
   # -------------------------
   # Test: Manual extremes should differ from Fixed Vocal
@@ -398,6 +446,33 @@ Invoke-TestCase -Name "Character clean vs opto" -Body {
 
   $results.Add([pscustomobject]@{ Test = "Character CLEAN vs OPTO"; Rms_dB = $CharacterMetrics.RmsDb; Peak_dB = $CharacterMetrics.PeakDb })
   Assert-Gt "Character CLEAN vs OPTO RMS" $CharacterMetrics.RmsDb -80
+  Write-Host ""
+}
+
+Invoke-TestCase -Name "Transfer curve calibration" -Body {
+  # -------------------------
+  # Test: static transfer curve should match expected gain computer shape.
+  # -------------------------
+  $TransferScript = ".\tools\transfer_curve_test.py"
+  if (!(Test-Path $TransferScript)) {
+    throw "Transfer curve script not found: $TransferScript"
+  }
+
+  $TransferOutDir = ".\artifacts\test_transfer_curve"
+  & python $TransferScript --harness $Harness --plugin $Plugin --outdir $TransferOutDir --sr $Sr --bs $Bs --ch $Ch --max-error-db 0.75
+  if ($LASTEXITCODE -ne 0) {
+    throw "Transfer curve calibration failed. See $TransferOutDir\transfer_metrics.json"
+  }
+
+  $TransferMetricsPath = Join-Path $TransferOutDir "transfer_metrics.json"
+  if (!(Test-Path $TransferMetricsPath)) {
+    throw "Transfer curve metrics not found: $TransferMetricsPath"
+  }
+
+  $TransferMetrics = Get-Content $TransferMetricsPath -Raw | ConvertFrom-Json
+  $maxErrorDb = [double]$TransferMetrics.max_error_db
+  $results.Add([pscustomobject]@{ Test = "Transfer max error"; Rms_dB = $maxErrorDb; Peak_dB = 0.75 })
+  Write-Host ("PASS Transfer max error ({0:N3} dB < 0.75 dB)" -f $maxErrorDb) -ForegroundColor Green
   Write-Host ""
 }
 

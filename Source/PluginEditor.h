@@ -54,6 +54,8 @@ private:
 
     juce::ToggleButton scHpfEnabledButton;
     std::unique_ptr<ButtonAttachment> scHpfEnabledAttachment;
+    juce::ToggleButton autoMakeupButton;
+    std::unique_ptr<ButtonAttachment> autoMakeupAttachment;
 
     juce::Label meterTitle;
     juce::Label osModeInUseLabel;

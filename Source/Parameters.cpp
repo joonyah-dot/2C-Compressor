@@ -17,7 +17,9 @@ juce::NormalisableRange<float> makeRatioRange()
             if (t <= 0.5f)
                 return 1.0f + (t / 0.5f) * 3.0f;
 
-            return 4.0f + ((t - 0.5f) / 0.5f) * 16.0f;
+            auto u = (t - 0.5f) / 0.5f;
+            u = std::pow (u, 1.2f);
+            return 4.0f * std::pow (20.0f / 4.0f, u);
         },
         [] (float start, float end, float value)
         {
@@ -27,7 +29,10 @@ juce::NormalisableRange<float> makeRatioRange()
             if (v <= 4.0f)
                 return ((v - 1.0f) / 3.0f) * 0.5f;
 
-            return 0.5f + ((v - 4.0f) / 16.0f) * 0.5f;
+            auto u = std::log (v / 4.0f) / std::log (20.0f / 4.0f);
+            u = juce::jlimit (0.0f, 1.0f, u);
+            u = std::pow (u, 1.0f / 1.2f);
+            return 0.5f + u * 0.5f;
         }
     };
 }
@@ -103,12 +108,19 @@ juce::NormalisableRange<float> makeSatDriveRange()
     range.setSkewForCentre (0.2f);
     return range;
 }
+
+juce::NormalisableRange<float> makeKneeRange()
+{
+    juce::NormalisableRange<float> range { 0.0f, 12.0f };
+    range.setSkewForCentre (3.0f);
+    return range;
+}
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameters;
-    parameters.reserve (16);
+    parameters.reserve (17);
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::inputDb, 1 }, "Input", juce::NormalisableRange<float> { -24.0f, 24.0f }, 0.0f,
@@ -171,7 +183,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
         juce::ParameterID { IDs::scHpfEnabled, 1 }, "SC HPF On", true));
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { IDs::kneeDb, 1 }, "Knee", juce::NormalisableRange<float> { 0.0f, 12.0f }, 6.0f,
+        juce::ParameterID { IDs::kneeDb, 1 }, "Knee", makeKneeRange(), 6.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (
             [] (float value, int) { return juce::String (value, 1) + " dB"; })));
 
@@ -179,6 +191,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout Parameters::createParameterL
         juce::ParameterID { IDs::makeupDb, 1 }, "Makeup", juce::NormalisableRange<float> { -12.0f, 24.0f }, 0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (
             [] (float value, int) { return juce::String (value, 1) + " dB"; })));
+
+    parameters.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { IDs::autoMakeup, 1 }, "Auto Makeup", false));
 
     parameters.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { IDs::satDrive, 1 }, "Drive", makeSatDriveRange(), 0.0f,

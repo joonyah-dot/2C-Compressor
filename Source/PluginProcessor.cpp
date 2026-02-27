@@ -57,10 +57,11 @@ TwoCCompressorAudioProcessor::TwoCCompressorAudioProcessor()
 
 void TwoCCompressorAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    processingSampleRate = juce::jmax (1.0, sampleRate);
     const auto numOutputChannels = juce::jmax (1, getTotalNumOutputChannels());
     const auto maxBlock = juce::jmax (1, samplesPerBlock);
 
-    compressor.init (sampleRate, maxBlock);
+    compressor.init (processingSampleRate, maxBlock);
 
     dryBuffer.setSize (numOutputChannels, maxBlock, false, false, true);
     saturationDryBuffer.setSize (numOutputChannels, maxBlock, false, false, true);
@@ -88,10 +89,13 @@ void TwoCCompressorAudioProcessor::prepareToPlay (double sampleRate, int samples
     oversampling4x->reset();
     oversampling4x->initProcessing (osBlock);
 
-    inputMeterBallistics.prepare (sampleRate, 10.0f, 300.0f);
+    inputMeterBallistics.prepare (processingSampleRate, 10.0f, 300.0f);
     inputMeterBallistics.reset (-100.0f);
-    outputMeterBallistics.prepare (sampleRate, 10.0f, 300.0f);
+    outputMeterBallistics.prepare (processingSampleRate, 10.0f, 300.0f);
     outputMeterBallistics.reset (-100.0f);
+
+    autoMakeupAverageGrDb = 0.0f;
+    autoMakeupAppliedDb = 0.0f;
 
     inputMeterDb.store (0.0f);
     outputMeterDb.store (0.0f);
@@ -131,6 +135,7 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const auto scHpfEnabled = loadParam (scHpfEnabledParam, 1.0f) >= 0.5f;
     const auto kneeDb = loadParam (kneeDbParam, 6.0f);
     const auto makeupDb = loadParam (makeupDbParam, 0.0f);
+    const auto autoMakeupEnabled = loadParam (autoMakeupParam, 0.0f) >= 0.5f;
     const auto satDrive = juce::jlimit (0.0f, 1.0f, loadParam (satDriveParam, 0.0f));
     const auto satMix = juce::jlimit (0.0f, 1.0f, loadParam (satMixParam, 0.0f));
     const auto osModeRequested = loadChoiceIndex (osModeParam, 0, 0, 2);
@@ -175,7 +180,32 @@ void TwoCCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     compressor.setParameters (compressorParams);
     compressor.processBlock (buffer);
 
-    buffer.applyGain (juce::Decibels::decibelsToGain (makeupDb));
+    const auto currentGainReductionDb = juce::jmax (0.0f, compressor.getMeterGainReductionDb());
+    const auto blockSeconds = static_cast<float> (numSamples / processingSampleRate);
+
+    const auto smoothingCoeffForSeconds = [] (float tauSeconds, float dtSeconds) noexcept
+    {
+        const auto tau = juce::jmax (0.001f, tauSeconds);
+        const auto dt = juce::jmax (0.000001f, dtSeconds);
+        return std::exp (-dt / tau);
+    };
+
+    constexpr auto avgAttackSeconds = 0.8f;
+    constexpr auto avgReleaseSeconds = 1.8f;
+    const auto avgCoeff = smoothingCoeffForSeconds (
+        currentGainReductionDb > autoMakeupAverageGrDb ? avgAttackSeconds : avgReleaseSeconds,
+        blockSeconds);
+    autoMakeupAverageGrDb = avgCoeff * autoMakeupAverageGrDb + (1.0f - avgCoeff) * currentGainReductionDb;
+
+    constexpr auto autoCompensationRatio = 0.72f;
+    const auto autoMakeupTargetDb = juce::jlimit (0.0f, 18.0f, autoMakeupAverageGrDb * autoCompensationRatio);
+
+    constexpr auto appliedMakeupSmoothingSeconds = 1.2f;
+    const auto appliedCoeff = smoothingCoeffForSeconds (appliedMakeupSmoothingSeconds, blockSeconds);
+    autoMakeupAppliedDb = appliedCoeff * autoMakeupAppliedDb + (1.0f - appliedCoeff) * autoMakeupTargetDb;
+
+    const auto effectiveMakeupDb = autoMakeupEnabled ? autoMakeupAppliedDb : makeupDb;
+    buffer.applyGain (juce::Decibels::decibelsToGain (effectiveMakeupDb));
 
     if (satDrive > 0.0001f && satMix > 0.0001f)
     {
@@ -275,6 +305,8 @@ void TwoCCompressorAudioProcessor::setStateInformation (const void* data, int si
         {
             const auto hasScHpfEnabled = xml->toString().contains (Parameters::IDs::scHpfEnabled);
             const auto hasTimingMode = xml->toString().contains (Parameters::IDs::timingMode);
+            const auto hasCharacter = xml->toString().contains (Parameters::IDs::character);
+            const auto hasAutoMakeup = xml->toString().contains (Parameters::IDs::autoMakeup);
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
 
             if (! hasScHpfEnabled)
@@ -283,6 +315,14 @@ void TwoCCompressorAudioProcessor::setStateInformation (const void* data, int si
 
             if (! hasTimingMode)
                 if (auto* parameter = apvts.getParameter (Parameters::IDs::timingMode))
+                    parameter->setValueNotifyingHost (0.0f);
+
+            if (! hasCharacter)
+                if (auto* parameter = apvts.getParameter (Parameters::IDs::character))
+                    parameter->setValueNotifyingHost (0.0f);
+
+            if (! hasAutoMakeup)
+                if (auto* parameter = apvts.getParameter (Parameters::IDs::autoMakeup))
                     parameter->setValueNotifyingHost (0.0f);
         }
     }
@@ -301,6 +341,7 @@ void TwoCCompressorAudioProcessor::cacheParameterPointers()
     scHpfEnabledParam = apvts.getRawParameterValue (Parameters::IDs::scHpfEnabled);
     kneeDbParam = apvts.getRawParameterValue (Parameters::IDs::kneeDb);
     makeupDbParam = apvts.getRawParameterValue (Parameters::IDs::makeupDb);
+    autoMakeupParam = apvts.getRawParameterValue (Parameters::IDs::autoMakeup);
     satDriveParam = apvts.getRawParameterValue (Parameters::IDs::satDrive);
     satMixParam = apvts.getRawParameterValue (Parameters::IDs::satMix);
     osModeParam = apvts.getRawParameterValue (Parameters::IDs::osMode);

@@ -72,11 +72,16 @@ private:
     std::atomic<float>* scHpfEnabledParam = nullptr;
     std::atomic<float>* kneeDbParam = nullptr;
     std::atomic<float>* makeupDbParam = nullptr;
+    std::atomic<float>* autoMakeupParam = nullptr;
     std::atomic<float>* satDriveParam = nullptr;
     std::atomic<float>* satMixParam = nullptr;
     std::atomic<float>* osModeParam = nullptr;
     std::atomic<float>* mixParam = nullptr;
     std::atomic<float>* outputDbParam = nullptr;
+
+    double processingSampleRate = 44100.0;
+    float autoMakeupAverageGrDb = 0.0f;
+    float autoMakeupAppliedDb = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TwoCCompressorAudioProcessor)
 };
